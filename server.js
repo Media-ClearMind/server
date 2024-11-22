@@ -11,6 +11,14 @@ app.use(cors());
 app.use(helmet());
 app.use(express.json());
 
+// 테스트를 위한 간단한 스키마
+const TestSchema = new mongoose.Schema({
+  name: String,
+  date: { type: Date, default: Date.now }
+});
+
+const Test = mongoose.model('Test', TestSchema);
+
 // MongoDB 연결 설정 개선
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
@@ -36,7 +44,29 @@ app.get('/', (req, res) => {
   res.json({ message: 'Welcome to the API' });
 });
 
-// 404 에러 핸들링
+// 테스트 라우트 추가
+app.post('/api/test', async (req, res) => {
+  try {
+    const test = new Test({ name: 'test-item' });
+    await test.save();
+    res.json({ success: true, data: test });
+  } catch (err) {
+    console.error('DB Test Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/test', async (req, res) => {
+  try {
+    const tests = await Test.find();
+    res.json({ success: true, data: tests });
+  } catch (err) {
+    console.error('DB Test Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 404 에러 핸들링 - 반드시 다른 라우트 정의 후에 위치해야 함
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
@@ -66,37 +96,4 @@ process.on('SIGTERM', () => {
     mongoose.connection.close();
     process.exit(0);
   });
-});
-
-// server.js에 추가
-const mongoose = require('mongoose');
-
-// 테스트를 위한 간단한 스키마
-const TestSchema = new mongoose.Schema({
-  name: String,
-  date: { type: Date, default: Date.now }
-});
-
-const Test = mongoose.model('Test', TestSchema);
-
-// 테스트 라우트 추가
-app.post('/api/test', async (req, res) => {
-  try {
-    const test = new Test({ name: 'test-item' });
-    await test.save();
-    res.json({ success: true, data: test });
-  } catch (err) {
-    console.error('DB Test Error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.get('/api/test', async (req, res) => {
-  try {
-    const tests = await Test.find();
-    res.json({ success: true, data: tests });
-  } catch (err) {
-    console.error('DB Test Error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
 });
