@@ -67,3 +67,36 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
+
+// server.js에 추가
+const mongoose = require('mongoose');
+
+// 테스트를 위한 간단한 스키마
+const TestSchema = new mongoose.Schema({
+  name: String,
+  date: { type: Date, default: Date.now }
+});
+
+const Test = mongoose.model('Test', TestSchema);
+
+// 테스트 라우트 추가
+app.post('/api/test', async (req, res) => {
+  try {
+    const test = new Test({ name: 'test-item' });
+    await test.save();
+    res.json({ success: true, data: test });
+  } catch (err) {
+    console.error('DB Test Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/test', async (req, res) => {
+  try {
+    const tests = await Test.find();
+    res.json({ success: true, data: tests });
+  } catch (err) {
+    console.error('DB Test Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
