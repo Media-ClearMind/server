@@ -1,7 +1,4 @@
 // utils/validation.js
-// 사용자 입력 데이터 검증 함수들
-
-// 사용자 등록 데이터 검증
 const validateRegisterInput = (data) => {
     const errors = {};
   

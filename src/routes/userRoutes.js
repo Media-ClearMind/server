@@ -103,10 +103,9 @@ router.post('/kakao-login', async (req, res) => {
     let user = await User.findOne({ kakaoId: kakaoUser.id });
     
     if (!user) {
-      // 새 사용자 생성
       user = new User({
         username: `kakao_${kakaoUser.id}`,
-        password: Math.random().toString(36).slice(-8), // 임시 비밀번호
+        password: Math.random().toString(36).slice(-8),
         kakaoId: kakaoUser.id,
         age: 0,
         gender: 'other',
@@ -115,7 +114,6 @@ router.post('/kakao-login', async (req, res) => {
       await user.save();
     }
 
-    // JWT 토큰 생성
     const token = jwt.sign(
       { 
         user_id: user._id,

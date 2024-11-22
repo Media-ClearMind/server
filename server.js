@@ -4,9 +4,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 require('dotenv').config();
 
-const connectDB = require('./config/db');
-const userRoutes = require('./routes/userRoutes');
-const analysisRoutes = require('./routes/analysisRoutes');
+const connectDB = require('./src/config/db');
+const userRoutes = require('./src/routes/userRoutes');
+const analysisRoutes = require('./src/routes/analysisRoutes');
 
 const app = express();
 
@@ -41,11 +41,4 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
-
-// 정상적인 서버 종료 처리
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received. Shutting down gracefully');
-  await mongoose.connection.close();
-  process.exit(0);
 });
