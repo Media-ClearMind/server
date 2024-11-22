@@ -2,23 +2,21 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
-const { validateRegisterInput } = require('../utils/validation');
 
 // 회원가입
 router.post('/register', async (req, res) => {
   try {
-    // 입력 데이터 검증
-    const { errors, isValid } = validateRegisterInput(req.body);
-    if (!isValid) {
-      return res.status(400).json({ error: errors });
-    }
-
     const { username, password, age, gender, occupation } = req.body;
     
     // 기존 사용자 확인
     const existingUser = await User.findOne({ username });
     if (existingUser) {
-      return res.status(400).json({ error: { username: 'Username already exists' } });
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    // 간단한 validation
+    if (!username || !password || !age || !gender || !occupation) {
+      return res.status(400).json({ error: 'All fields are required' });
     }
 
     // 새 사용자 생성
