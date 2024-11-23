@@ -263,4 +263,231 @@ router.post('/kakao-login', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/users/profile:
+ *   get:
+ *     summary: 사용자 프로필 조회
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 프로필 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 username:
+ *                   type: string
+ *                 age:
+ *                   type: number
+ *                 gender:
+ *                   type: string
+ *                 occupation:
+ *                   type: string
+ *       401:
+ *         description: 인증 실패
+ *       404:
+ *         description: 사용자를 찾을 수 없음
+ */
+router.get('/profile', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.user_id)
+      .select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res.status(500).json({ error: 'Error fetching profile' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/profile:
+ *   put:
+ *     summary: 사용자 프로필 수정
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               age:
+ *                 type: number
+ *               gender:
+ *                 type: string
+ *               occupation:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 프로필 수정 성공
+ *       400:
+ *         description: 잘못된 입력
+ *       401:
+ *         description: 인증 실패
+ */
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { age, gender, occupation } = req.body;
+    
+    const updateFields = {};
+    if (age) updateFields.age = age;
+    if (gender) updateFields.gender = gender;
+    if (occupation) updateFields.occupation = occupation;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.user_id,
+      { $set: updateFields },
+      { new: true, select: '-password' }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      message: 'Profile updated successfully',
+      user
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(400).json({ error: 'Error updating profile' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/change-password:
+ *   put:
+ *     summary: 비밀번호 변경
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 비밀번호 변경 성공
+ *       400:
+ *         description: 잘못된 요청
+ *       401:
+ *         description: 현재 비밀번호가 일치하지 않음
+ */
+router.put('/change-password', auth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ 
+        error: 'Current password and new password are required' 
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ 
+        error: 'New password must be at least 6 characters long' 
+      });
+    }
+
+    const user = await User.findById(req.user.user_id);
+    
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ 
+        error: 'New password must be different from current password' 
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Password change error:', error);
+    res.status(500).json({ error: 'Error changing password' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/account:
+ *   delete:
+ *     summary: 회원 탈퇴
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 계정 삭제 성공
+ *       400:
+ *         description: 잘못된 요청
+ *       401:
+ *         description: 비밀번호가 일치하지 않음
+ */
+router.delete('/account', auth, async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    const user = await User.findById(req.user.user_id);
+    
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Password is incorrect' });
+    }
+
+    // Analysis 모델 import 필요
+    const Analysis = require('../models/analysis');
+    await Analysis.deleteMany({ user_id: req.user.user_id });
+    
+    await User.findByIdAndDelete(req.user.user_id);
+
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ error: 'Error deleting account' });
+  }
+});
+
 module.exports = router;
