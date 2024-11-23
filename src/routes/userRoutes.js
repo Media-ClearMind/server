@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
+const auth = require('../middleware/auth');
+const Analysis = require('../models/analysis');
 
 /**
  * @swagger
@@ -10,15 +12,20 @@ const User = require('../models/user');
  *     User:
  *       type: object
  *       required:
- *         - username
+ *         - email
  *         - password
+ *         - name
  *         - age
  *         - gender
  *         - occupation
  *       properties:
- *         username:
+ *         email:
  *           type: string
- *           description: 사용자 아이디
+ *           format: email
+ *           description: 사용자 이메일
+ *         name:
+ *           type: string
+ *           description: 사용자 이름
  *         password:
  *           type: string
  *           description: 사용자 비밀번호
@@ -46,13 +53,17 @@ const User = require('../models/user');
  *           schema:
  *             type: object
  *             required:
- *               - username
+ *               - email
  *               - password
+ *               - name
  *               - age
  *               - gender
  *               - occupation
  *             properties:
- *               username:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               name:
  *                 type: string
  *               password:
  *                 type: string
@@ -66,26 +77,27 @@ const User = require('../models/user');
  *       201:
  *         description: 회원가입 성공
  *       400:
- *         description: 잘못된 요청 (중복된 username이거나 필수 필드 누락)
+ *         description: 잘못된 요청 (중복된 이메일이거나 필수 필드 누락)
  *       500:
  *         description: 서버 에러
  */
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, age, gender, occupation } = req.body;
+    const { email, password, name, age, gender, occupation } = req.body;
     
-    const existingUser = await User.findOne({ username });
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return res.status(400).json({ error: 'Username already exists' });
+      return res.status(400).json({ error: 'Email already exists' });
     }
 
-    if (!username || !password || !age || !gender || !occupation) {
+    if (!email || !password || !name || !age || !gender || !occupation) {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
     const user = new User({
-      username,
+      email: email.toLowerCase(),
       password,
+      name,
       age,
       gender,
       occupation
@@ -112,11 +124,12 @@ router.post('/register', async (req, res) => {
  *           schema:
  *             type: object
  *             required:
- *               - username
+ *               - email
  *               - password
  *             properties:
- *               username:
+ *               email:
  *                 type: string
+ *                 format: email
  *               password:
  *                 type: string
  *     responses:
@@ -135,7 +148,9 @@ router.post('/register', async (req, res) => {
  *                   properties:
  *                     id:
  *                       type: string
- *                     username:
+ *                     email:
+ *                       type: string
+ *                     name:
  *                       type: string
  *       401:
  *         description: 인증 실패
@@ -144,22 +159,22 @@ router.post('/register', async (req, res) => {
  */
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
     
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid username or password.' });
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid username or password.' });
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
     const token = jwt.sign(
       { 
         user_id: user._id,
-        username: user.username
+        email: user.email
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
@@ -169,7 +184,8 @@ router.post('/login', async (req, res) => {
       token,
       user: {
         id: user._id,
-        username: user.username
+        email: user.email,
+        name: user.name
       }
     });
   } catch (error) {
@@ -203,7 +219,9 @@ router.post('/login', async (req, res) => {
  *                   properties:
  *                     id:
  *                       type: string
- *                     username:
+ *                     email:
+ *                       type: string
+ *                     name:
  *                       type: string
  *       400:
  *         description: 잘못된 요청 또는 카카오 로그인 실패
@@ -230,8 +248,13 @@ router.post('/kakao-login', async (req, res) => {
     let user = await User.findOne({ kakaoId: kakaoUser.id });
     
     if (!user) {
+      // 카카오 계정의 이메일과 이름 사용
+      const kakaoEmail = kakaoUser.kakao_account?.email;
+      const kakaoName = kakaoUser.properties?.nickname || 'Kakao User';
+      
       user = new User({
-        username: `kakao_${kakaoUser.id}`,
+        email: kakaoEmail || `kakao_${kakaoUser.id}@kakao.com`,
+        name: kakaoName,
         password: Math.random().toString(36).slice(-8),
         kakaoId: kakaoUser.id,
         age: 0,
@@ -244,7 +267,7 @@ router.post('/kakao-login', async (req, res) => {
     const token = jwt.sign(
       { 
         user_id: user._id,
-        username: user.username
+        email: user.email
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
@@ -254,7 +277,8 @@ router.post('/kakao-login', async (req, res) => {
       token,
       user: {
         id: user._id,
-        username: user.username
+        email: user.email,
+        name: user.name
       }
     });
   } catch (error) {
@@ -279,7 +303,9 @@ router.post('/kakao-login', async (req, res) => {
  *             schema:
  *               type: object
  *               properties:
- *                 username:
+ *                 email:
+ *                   type: string
+ *                 name:
  *                   type: string
  *                 age:
  *                   type: number
@@ -323,6 +349,8 @@ router.get('/profile', auth, async (req, res) => {
  *           schema:
  *             type: object
  *             properties:
+ *               name:
+ *                 type: string
  *               age:
  *                 type: number
  *               gender:
@@ -339,9 +367,10 @@ router.get('/profile', auth, async (req, res) => {
  */
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { age, gender, occupation } = req.body;
+    const { name, age, gender, occupation } = req.body;
     
     const updateFields = {};
+    if (name) updateFields.name = name;
     if (age) updateFields.age = age;
     if (gender) updateFields.gender = gender;
     if (occupation) updateFields.occupation = occupation;
@@ -477,10 +506,7 @@ router.delete('/account', auth, async (req, res) => {
       return res.status(401).json({ error: 'Password is incorrect' });
     }
 
-    // Analysis 모델 import 필요
-    const Analysis = require('../models/analysis');
     await Analysis.deleteMany({ user_id: req.user.user_id });
-    
     await User.findByIdAndDelete(req.user.user_id);
 
     res.json({ message: 'Account deleted successfully' });

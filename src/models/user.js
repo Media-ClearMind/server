@@ -8,8 +8,9 @@ const bcrypt = require('bcryptjs');
  *     User:
  *       type: object
  *       required:
- *         - username
+ *         - email
  *         - password
+ *         - name
  *         - age
  *         - gender
  *         - occupation
@@ -17,9 +18,13 @@ const bcrypt = require('bcryptjs');
  *         _id:
  *           type: string
  *           description: 사용자의 고유 ID
- *         username:
+ *         email:
  *           type: string
- *           description: 사용자 아이디 (중복 불가)
+ *           description: 사용자 이메일 (중복 불가)
+ *           format: email
+ *         name:
+ *           type: string
+ *           description: 사용자 이름
  *         password:
  *           type: string
  *           description: 암호화된 비밀번호
@@ -46,9 +51,12 @@ const bcrypt = require('bcryptjs');
  *         _id:
  *           type: string
  *           description: 사용자의 고유 ID
- *         username:
+ *         email:
  *           type: string
- *           description: 사용자 아이디
+ *           description: 사용자 이메일
+ *         name:
+ *           type: string
+ *           description: 사용자 이름
  *         age:
  *           type: number
  *           description: 사용자 나이
@@ -65,10 +73,17 @@ const bcrypt = require('bcryptjs');
  */
 
 const userSchema = new mongoose.Schema({
-  username: {
+  email: {
     type: String,
     required: true,
     unique: true,
+    trim: true,
+    lowercase: true,
+    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+  },
+  name: {
+    type: String,
+    required: true,
     trim: true
   },
   password: {

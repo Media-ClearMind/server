@@ -8,9 +8,12 @@
  *         errors:
  *           type: object
  *           properties:
- *             username:
+ *             email:
  *               type: string
- *               example: "Username must be at least 3 characters long"
+ *               example: "Please enter a valid email address"
+ *             name:
+ *               type: string
+ *               example: "Name must be at least 2 characters long"
  *             password:
  *               type: string
  *               example: "Password must be at least 6 characters long"
@@ -29,16 +32,21 @@
  *     RegisterInput:
  *       type: object
  *       required:
- *         - username
+ *         - email
+ *         - name
  *         - password
  *         - age
  *         - gender
  *         - occupation
  *       properties:
- *         username:
+ *         email:
  *           type: string
- *           minLength: 3
- *           description: 사용자명 (최소 3자)
+ *           format: email
+ *           description: 사용자 이메일
+ *         name:
+ *           type: string
+ *           minLength: 2
+ *           description: 사용자 이름 (최소 2자)
  *         password:
  *           type: string
  *           minLength: 6
@@ -100,22 +108,33 @@
 const validateRegisterInput = (data) => {
   const errors = {};
 
-  if (!data.username || data.username.trim().length < 3) {
-    errors.username = 'Username must be at least 3 characters long';
+  // 이메일 검증
+  const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+  if (!data.email || !emailRegex.test(data.email)) {
+    errors.email = 'Please enter a valid email address';
   }
 
+  // 이름 검증
+  if (!data.name || data.name.trim().length < 2) {
+    errors.name = 'Name must be at least 2 characters long';
+  }
+
+  // 비밀번호 검증
   if (!data.password || data.password.length < 6) {
     errors.password = 'Password must be at least 6 characters long';
   }
 
+  // 나이 검증
   if (!Number.isInteger(data.age) || data.age < 0) {
     errors.age = 'Age must be a positive number';
   }
 
+  // 성별 검증
   if (!['male', 'female', 'other'].includes(data.gender)) {
     errors.gender = 'Invalid gender specified';
   }
 
+  // 직업 검증
   if (!data.occupation || data.occupation.trim().length === 0) {
     errors.occupation = 'Occupation is required';
   }
