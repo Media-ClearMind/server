@@ -19,7 +19,7 @@ router.post('/submit', auth, async (req, res) => {
   }
 });
 
-// 사용자 분석 기록 조회
+// 사용자 분석 기록 조회 (경로 수정)
 router.get('/user/:user_id/history', auth, async (req, res) => {
   try {
     // 권한 확인
