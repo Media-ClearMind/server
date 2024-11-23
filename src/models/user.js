@@ -1,6 +1,69 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     User:
+ *       type: object
+ *       required:
+ *         - username
+ *         - password
+ *         - age
+ *         - gender
+ *         - occupation
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: 사용자의 고유 ID
+ *         username:
+ *           type: string
+ *           description: 사용자 아이디 (중복 불가)
+ *         password:
+ *           type: string
+ *           description: 암호화된 비밀번호
+ *         age:
+ *           type: number
+ *           description: 사용자 나이
+ *         gender:
+ *           type: string
+ *           enum: [male, female, other]
+ *           description: 사용자 성별
+ *         occupation:
+ *           type: string
+ *           description: 사용자 직업
+ *         kakaoId:
+ *           type: string
+ *           description: 카카오 로그인 사용자의 카카오 ID
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           description: 계정 생성 시간
+ *     UserResponse:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: 사용자의 고유 ID
+ *         username:
+ *           type: string
+ *           description: 사용자 아이디
+ *         age:
+ *           type: number
+ *           description: 사용자 나이
+ *         gender:
+ *           type: string
+ *           description: 사용자 성별
+ *         occupation:
+ *           type: string
+ *           description: 사용자 직업
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           description: 계정 생성 시간
+ */
+
 const userSchema = new mongoose.Schema({
   username: {
     type: String,

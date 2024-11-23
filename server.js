@@ -5,7 +5,7 @@ const helmet = require('helmet');
 require('dotenv').config();
 
 const connectDB = require('./src/config/db');
-const { specs, swaggerUi } = require('./src/config/swagger');
+const { specs, swaggerUi, swaggerOptions } = require('./src/config/swagger');
 const userRoutes = require('./src/routes/userRoutes');
 const analysisRoutes = require('./src/routes/analysisRoutes');
 
@@ -26,7 +26,7 @@ app.use(helmet({
 app.use(express.json());
 
 // Swagger UI 설정
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerOptions));
 
 // MongoDB 연결
 connectDB()
@@ -40,12 +40,44 @@ connectDB()
 app.use('/api/users', userRoutes);
 app.use('/api/analysis', analysisRoutes);
 
-// 404 에러 핸들링
+/**
+ * @swagger
+ * /404:
+ *   get:
+ *     description: 존재하지 않는 라우트에 대한 404 에러 응답
+ *     responses:
+ *       404:
+ *         description: 라우트를 찾을 수 없습니다
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Route not found
+ */
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// 전역 에러 핸들링
+/**
+ * @swagger
+ * /error:
+ *   get:
+ *     description: 서버 내부 오류에 대한 500 에러 응답
+ *     responses:
+ *       500:
+ *         description: 서버 내부 오류
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Something went wrong!
+ */
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Something went wrong!' });
