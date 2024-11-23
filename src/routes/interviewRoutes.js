@@ -30,20 +30,34 @@ const User = require('../models/user');
  *                       type: string
  *                     order:
  *                       type: number
+ *     responses:
+ *       201:
+ *         description: 인터뷰 제출 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Interview submitted successfully
+ *                 interview_count:
+ *                   type: number
+ *                   example: 1
  */
 router.post('/submit', auth, async (req, res) => {
   try {
     // 사용자의 count 증가
     const user = await User.findByIdAndUpdate(
       req.user.user_id,
-      { $inc: { count: 1 } },  // count를 1 증가
+      { $inc: { count: 1 } },
       { new: true }
     );
 
     // 새 인터뷰 데이터 생성
     const interview = new Interview({
       user_id: req.user.user_id,
-      interview_count: user.count,  // 증가된 count 사용
+      interview_count: user.count,
       questions_answers: req.body.questions_answers
     });
 
@@ -67,11 +81,39 @@ router.post('/submit', auth, async (req, res) => {
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   user_id:
+ *                     type: string
+ *                   interview_count:
+ *                     type: number
+ *                   questions_answers:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         question:
+ *                           type: string
+ *                         answer:
+ *                           type: string
+ *                         order:
+ *                           type: number
+ *                   createdAt:
+ *                     type: string
+ *                     format: date-time
  */
 router.get('/history', auth, async (req, res) => {
   try {
     const interviews = await Interview.find({ user_id: req.user.user_id })
-      .sort({ createdAt: -1 });  // 최신순 정렬
+      .sort({ createdAt: -1 });
 
     res.json(interviews);
   } catch (error) {
@@ -88,6 +130,41 @@ router.get('/history', auth, async (req, res) => {
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: interview_count
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 조회할 인터뷰의 회차 번호
+ *     responses:
+ *       200:
+ *         description: 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user_id:
+ *                   type: string
+ *                 interview_count:
+ *                   type: number
+ *                 questions_answers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       question:
+ *                         type: string
+ *                       answer:
+ *                         type: string
+ *                       order:
+ *                         type: number
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *       404:
+ *         description: 인터뷰를 찾을 수 없음
  */
 router.get('/:interview_count', auth, async (req, res) => {
   try {
