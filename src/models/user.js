@@ -41,6 +41,9 @@ const bcrypt = require('bcryptjs');
  *         kakaoId:
  *           type: string
  *           description: 카카오 로그인 사용자의 카카오 ID
+ *         count:
+ *           type: number
+ *           description: 서비스 이용 횟수
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -66,6 +69,9 @@ const bcrypt = require('bcryptjs');
  *         occupation:
  *           type: string
  *           description: 사용자 직업
+ *         count:
+ *           type: number
+ *           description: 서비스 이용 횟수
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -106,6 +112,11 @@ const userSchema = new mongoose.Schema({
   kakaoId: {
     type: String,
     sparse: true
+  },
+  count: {
+    type: Number,
+    default: 0,
+    required: true
   },
   createdAt: {
     type: Date,

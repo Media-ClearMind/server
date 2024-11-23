@@ -8,6 +8,7 @@ const connectDB = require('./src/config/db');
 const { specs, swaggerUi, swaggerOptions } = require('./src/config/swagger');
 const userRoutes = require('./src/routes/userRoutes');
 const analysisRoutes = require('./src/routes/analysisRoutes');
+const interviewRoutes = require('./src/routes/interviewRoutes'); // 추가
 
 const app = express();
 
@@ -39,6 +40,7 @@ connectDB()
 // 라우트
 app.use('/api/users', userRoutes);
 app.use('/api/analysis', analysisRoutes);
+app.use('/api/interviews', interviewRoutes); // 추가
 
 /**
  * @swagger
