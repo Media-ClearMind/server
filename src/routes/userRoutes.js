@@ -3,23 +3,86 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 
-// 회원가입
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     User:
+ *       type: object
+ *       required:
+ *         - username
+ *         - password
+ *         - age
+ *         - gender
+ *         - occupation
+ *       properties:
+ *         username:
+ *           type: string
+ *           description: 사용자 아이디
+ *         password:
+ *           type: string
+ *           description: 사용자 비밀번호
+ *         age:
+ *           type: number
+ *           description: 사용자 나이
+ *         gender:
+ *           type: string
+ *           description: 사용자 성별
+ *         occupation:
+ *           type: string
+ *           description: 사용자 직업
+ */
+
+/**
+ * @swagger
+ * /api/users/register:
+ *   post:
+ *     summary: 새로운 사용자 등록
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - password
+ *               - age
+ *               - gender
+ *               - occupation
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               age:
+ *                 type: number
+ *               gender:
+ *                 type: string
+ *               occupation:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: 회원가입 성공
+ *       400:
+ *         description: 잘못된 요청 (중복된 username이거나 필수 필드 누락)
+ *       500:
+ *         description: 서버 에러
+ */
 router.post('/register', async (req, res) => {
   try {
     const { username, password, age, gender, occupation } = req.body;
     
-    // 기존 사용자 확인
     const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(400).json({ error: 'Username already exists' });
     }
 
-    // 간단한 validation
     if (!username || !password || !age || !gender || !occupation) {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    // 새 사용자 생성
     const user = new User({
       username,
       password,
@@ -36,24 +99,63 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// 로그인
+/**
+ * @swagger
+ * /api/users/login:
+ *   post:
+ *     summary: 사용자 로그인
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 로그인 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   description: JWT 토큰
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *       401:
+ *         description: 인증 실패
+ *       500:
+ *         description: 서버 에러
+ */
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
-    // 사용자 찾기
     const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ error: 'Invalid username or password.' });
     }
 
-    // 비밀번호 확인
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid username or password.' });
     }
 
-    // JWT 토큰 생성
     const token = jwt.sign(
       { 
         user_id: user._id,
@@ -76,7 +178,36 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// 카카오 로그인
+/**
+ * @swagger
+ * /api/users/kakao-login:
+ *   post:
+ *     summary: 카카오 로그인
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     description: 카카오 액세스 토큰을 사용하여 로그인
+ *     responses:
+ *       200:
+ *         description: 로그인 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   description: JWT 토큰
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *       400:
+ *         description: 잘못된 요청 또는 카카오 로그인 실패
+ */
 router.post('/kakao-login', async (req, res) => {
   try {
     const kakaoToken = req.headers.authorization?.replace('Bearer ', '');
@@ -84,7 +215,6 @@ router.post('/kakao-login', async (req, res) => {
       return res.status(400).json({ error: 'Kakao token is required.' });
     }
 
-    // 카카오 API로 사용자 정보 조회
     const response = await fetch('https://kapi.kakao.com/v2/user/me', {
       headers: {
         Authorization: `Bearer ${kakaoToken}`
@@ -97,7 +227,6 @@ router.post('/kakao-login', async (req, res) => {
 
     const kakaoUser = await response.json();
     
-    // 기존 카카오 회원 찾기 또는 새로 생성
     let user = await User.findOne({ kakaoId: kakaoUser.id });
     
     if (!user) {
