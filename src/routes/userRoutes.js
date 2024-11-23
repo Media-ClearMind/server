@@ -85,13 +85,13 @@ router.post('/register', async (req, res) => {
   try {
     const { email, password, name, age, gender, occupation } = req.body;
     
+    if (!email || !password || !name || !age || !gender || !occupation) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({ error: 'Email already exists' });
-    }
-
-    if (!email || !password || !name || !age || !gender || !occupation) {
-      return res.status(400).json({ error: 'All fields are required' });
     }
 
     const user = new User({
@@ -107,6 +107,9 @@ router.post('/register', async (req, res) => {
     res.status(201).json({ message: 'User registered successfully.' });
   } catch (error) {
     console.error('Registration error:', error);
+    if (error.code === 11000) { // 중복 키 에러
+      return res.status(400).json({ error: 'Email already exists' });
+    }
     res.status(500).json({ error: 'Registration failed.' });
   }
 });
