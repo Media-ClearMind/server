@@ -91,6 +91,172 @@ router.get('/detail/:analysis_id', auth, async (req, res) => {
 });
 
 /**
+* @swagger
+* /api/analysis/current/{interview_count}:
+*   get:
+*     summary: 현재 인터뷰 회차의 감정 분석 평균값 조회
+*     description: 특정 인터뷰 회차의 얼굴 분석 평균 결과를 조회합니다.
+*     tags: [Analysis]
+*     security:
+*       - bearerAuth: []
+*     parameters:
+*       - in: path
+*         name: interview_count
+*         required: true
+*         schema:
+*           type: integer
+*         description: 조회할 인터뷰 회차 번호 
+*     responses:
+*       200:
+*         description: 조회 성공
+*         content:
+*           application/json:
+*             schema:
+*               type: object
+*               properties:
+*                 count:
+*                   type: integer
+*                 date:
+*                   type: string
+*                 face_confidence:
+*                   type: number
+*                 emotion:
+*                   type: object
+*                   properties:
+*                     angry:
+*                       type: number
+*                     disgust:
+*                       type: number
+*                     fear:
+*                       type: number
+*                     happy:
+*                       type: number
+*                     neutral:
+*                       type: number
+*                     sad:
+*                       type: number
+*                     surprise:
+*                       type: number
+*       404:
+*         description: 분석 결과를 찾을 수 없음
+*/
+router.get('/current/:interview_count', auth, async (req, res) => {
+  try {
+    const interviewCount = parseInt(req.params.interview_count);
+    
+    // MongoDB의 emotion_averages 컬렉션에서 조회
+    const db = mongoose.connection.db;
+    const emotionAverage = await db.collection('emotion_averages')
+      .findOne({ 
+        count: interviewCount,
+        user_id: new mongoose.Types.ObjectId(req.user.user_id)
+      });
+ 
+    if (!emotionAverage) {
+      return res.status(404).json({ 
+        error: 'No emotion analysis average found for this interview count' 
+      });
+    }
+ 
+    res.json(emotionAverage);
+  } catch (error) {
+    console.error('Emotion average fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch emotion average' });
+  }
+ });
+ 
+ /**
+ * @swagger
+ * /api/analysis/score:
+ *   put:
+ *     summary: 감정 분석 평균값에 최종 점수 추가
+ *     description: 특정 회차의 감정 분석 평균값에 최종 점수를 추가합니다.
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - interview_count
+ *               - final_score
+ *             properties:
+ *               interview_count:
+ *                 type: integer
+ *                 description: 인터뷰 회차
+ *               final_score:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: 최종 점수
+ *     responses:
+ *       200:
+ *         description: 점수 업데이트 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Score updated successfully
+ *                 analysis:
+ *                   type: object
+ *       400:
+ *         description: 잘못된 요청
+ *       404:
+ *         description: 분석 결과를 찾을 수 없음
+ */
+ router.put('/score', auth, async (req, res) => {
+  try {
+    const { interview_count, final_score } = req.body;
+    
+    // 입력값 검증
+    if (!interview_count || typeof interview_count !== 'number') {
+      return res.status(400).json({ 
+        error: 'Valid interview count is required' 
+      });
+    }
+ 
+    if (typeof final_score !== 'number' || final_score < 0 || final_score > 100) {
+      return res.status(400).json({ 
+        error: 'Final score must be a number between 0 and 100' 
+      });
+    }
+ 
+    const db = mongoose.connection.db;
+    
+    // emotion_averages 컬렉션에서 해당 회차의 분석 결과 찾기
+    const updatedAnalysis = await db.collection('emotion_averages')
+      .findOneAndUpdate(
+        { 
+          count: interview_count,
+          user_id: new mongoose.Types.ObjectId(req.user.user_id)
+        },
+        { $set: { final_score: final_score } },
+        { returnDocument: 'after' }
+      );
+ 
+    if (!updatedAnalysis.value) {
+      return res.status(404).json({ 
+        error: 'No analysis found for this interview count' 
+      });
+    }
+ 
+    res.json({
+      message: 'Score updated successfully',
+      analysis: updatedAnalysis.value
+    });
+  } catch (error) {
+    console.error('Score update error:', error);
+    res.status(500).json({ error: 'Failed to update score' });
+  }
+ });
+
+/**
  * @swagger
  * /api/analysis/user/{user_id}/history/period:
  *   get:
@@ -317,6 +483,112 @@ router.get('/user/:user_id/statistics', auth, async (req, res) => {
   } catch (error) {
     console.error('Statistics error:', error);
     res.status(500).json({ error: 'Error calculating statistics' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/analysis/{analysis_id}/score:
+ *   put:
+ *     summary: 분석 결과에 최종 점수 추가
+ *     description: 특정 분석 결과에 최종 평균 점수를 추가합니다.
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: analysis_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: 업데이트할 분석 결과의 ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - final_score
+ *               - emotion_scores
+ *             properties:
+ *               final_score:
+ *                 type: number
+ *                 description: 최종 평균 점수
+ *               emotion_scores:
+ *                 type: object
+ *                 properties:
+ *                   angry:
+ *                     type: number
+ *                   disgust:
+ *                     type: number
+ *                   fear:
+ *                     type: number
+ *                   happy:
+ *                     type: number
+ *                   sad:
+ *                     type: number
+ *                   surprise:
+ *                     type: number
+ *                   neutral:
+ *                     type: number
+ *     responses:
+ *       200:
+ *         description: 점수 업데이트 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Score updated successfully
+ *                 analysis:
+ *                   $ref: '#/components/schemas/Analysis'
+ *       400:
+ *         description: 잘못된 요청
+ *       401:
+ *         description: 인증 실패
+ *       404:
+ *         description: 분석 결과를 찾을 수 없음
+ */
+router.put('/:analysis_id/score', auth, async (req, res) => {
+  try {
+    const { final_score, emotion_scores } = req.body;
+    
+    // 입력값 검증
+    if (typeof final_score !== 'number' || final_score < 0 || final_score > 100) {
+      return res.status(400).json({ 
+        error: 'Final score must be a number between 0 and 100' 
+      });
+    }
+
+    // 분석 결과 찾기
+    const analysis = await Analysis.findById(req.params.analysis_id);
+    if (!analysis) {
+      return res.status(404).json({ error: 'Analysis not found' });
+    }
+
+    // 권한 확인
+    if (analysis.user_id.toString() !== req.user.user_id) {
+      return res.status(403).json({ error: 'Unauthorized access' });
+    }
+
+    // 결과 업데이트
+    analysis.result.final_score = final_score;
+    if (emotion_scores) {
+      analysis.face_analysis.emotion_scores = emotion_scores;
+    }
+    
+    await analysis.save();
+
+    res.json({
+      message: 'Score updated successfully',
+      analysis
+    });
+  } catch (error) {
+    console.error('Score update error:', error);
+    res.status(500).json({ error: 'Failed to update score' });
   }
 });
 
