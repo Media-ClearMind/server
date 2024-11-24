@@ -144,8 +144,8 @@ router.get('/current/:interview_count', auth, async (req, res) => {
   try {
     const interviewCount = parseInt(req.params.interview_count);
     
-    // MongoDB의 emotion_averages 컬렉션에서 조회
-    const db = mongoose.connection.db;
+    // your_database의 emotion_averages 컬렉션에서 조회
+    const db = mongoose.connection.useDb('your_database');
     const emotionAverage = await db.collection('emotion_averages')
       .findOne({ 
         count: interviewCount,
@@ -163,7 +163,7 @@ router.get('/current/:interview_count', auth, async (req, res) => {
     console.error('Emotion average fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch emotion average' });
   }
- });
+});
  
  /**
  * @swagger
@@ -227,7 +227,7 @@ router.get('/current/:interview_count', auth, async (req, res) => {
       });
     }
  
-    const db = mongoose.connection.db;
+    const db = mongoose.connection.useDb('your_database');
     
     // emotion_averages 컬렉션에서 해당 회차의 분석 결과 찾기
     const updatedAnalysis = await db.collection('emotion_averages')
