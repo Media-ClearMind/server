@@ -8,7 +8,7 @@ const User = require('../models/user');
  * @swagger
  * /api/interviews/submit:
  *   post:
- *     summary: 인터뷰 결과 제출 (3개의 Q&A 세트)
+ *     summary: 인터뷰 결과 제출 (3개의 Q&A 세트와 점수)
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
@@ -18,6 +18,9 @@ const User = require('../models/user');
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - questions_answers
+ *               - score
  *             properties:
  *               questions_answers:
  *                 type: array
@@ -38,6 +41,12 @@ const User = require('../models/user');
  *                     order:
  *                       type: number
  *                       example: 1
+ *               score:
+ *                 type: number
+ *                 description: 인터뷰 점수 (0-100)
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 example: 85
  *           example:
  *             questions_answers:
  *               - question: "첫 번째 질문입니다."
@@ -49,49 +58,46 @@ const User = require('../models/user');
  *               - question: "세 번째 질문입니다."
  *                 answer: "세 번째 답변입니다."
  *                 order: 3
- *     responses:
- *       201:
- *         description: 인터뷰 제출 성공
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Interview submitted successfully
- *                 interview_count:
- *                   type: number
- *                   description: 현재 사용자의 총 인터뷰 횟수
- *                   example: 1
+ *             score: 85
  */
 router.post('/submit', auth, async (req, res) => {
-  try {
-    // 사용자의 count 증가
-    const user = await User.findByIdAndUpdate(
-      req.user.user_id,
-      { $inc: { count: 1 } },
-      { new: true }
-    );
-
-    // 새 인터뷰 데이터 생성
-    const interview = new Interview({
-      user_id: req.user.user_id,
-      interview_count: user.count,
-      questions_answers: req.body.questions_answers
-    });
-
-    await interview.save();
-
-    res.status(201).json({ 
-      message: 'Interview submitted successfully',
-      interview_count: user.count
-    });
-  } catch (error) {
-    console.error('Interview submission error:', error);
-    res.status(500).json({ error: 'Failed to submit interview' });
-  }
-});
+    try {
+      const { score } = req.body;
+      
+      // score 유효성 검사
+      if (score < 0 || score > 100 || !Number.isInteger(score)) {
+        return res.status(400).json({ 
+          error: 'Score must be an integer between 0 and 100' 
+        });
+      }
+  
+      // 사용자의 count 증가
+      const user = await User.findByIdAndUpdate(
+        req.user.user_id,
+        { $inc: { count: 1 } },
+        { new: true }
+      );
+  
+      // 새 인터뷰 데이터 생성
+      const interview = new Interview({
+        user_id: req.user.user_id,
+        interview_count: user.count,
+        questions_answers: req.body.questions_answers,
+        score: score
+      });
+  
+      await interview.save();
+  
+      res.status(201).json({ 
+        message: 'Interview submitted successfully',
+        interview_count: user.count,
+        score: score
+      });
+    } catch (error) {
+      console.error('Interview submission error:', error);
+      res.status(500).json({ error: 'Failed to submit interview' });
+    }
+  });
 
 /**
  * @swagger

@@ -24,6 +24,16 @@ const interviewSchema = new mongoose.Schema({
       required: true
     }
   }],
+  score: {
+    type: Number,
+    required: true,
+    min: 0,
+    max: 100,
+    validate: {
+      validator: Number.isInteger,
+      message: '{VALUE} is not an integer value'
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now
