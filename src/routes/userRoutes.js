@@ -38,6 +38,13 @@ const Analysis = require('../models/analysis');
  *         occupation:
  *           type: string
  *           description: 사용자 직업
+ *         count:
+ *           type: number
+ *           description: 사용자의 인터뷰 진행 횟수
+ *           default: 0
+ *         kakaoId:
+ *           type: string
+ *           description: 카카오 로그인 사용자의 카카오 ID
  */
 
 /**
@@ -78,6 +85,13 @@ const Analysis = require('../models/analysis');
  *         description: 회원가입 성공
  *       400:
  *         description: 잘못된 요청 (중복된 이메일이거나 필수 필드 누락)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
  *       500:
  *         description: 서버 에러
  */
@@ -100,14 +114,15 @@ router.post('/register', async (req, res) => {
       name,
       age,
       gender,
-      occupation
+      occupation,
+      count: 0  // 초기 count 설정
     });
 
     await user.save();
     res.status(201).json({ message: 'User registered successfully.' });
   } catch (error) {
     console.error('Registration error:', error);
-    if (error.code === 11000) { // 중복 키 에러
+    if (error.code === 11000) {
       return res.status(400).json({ error: 'Email already exists' });
     }
     res.status(500).json({ error: 'Registration failed.' });
@@ -155,6 +170,8 @@ router.post('/register', async (req, res) => {
  *                       type: string
  *                     name:
  *                       type: string
+ *                     count:
+ *                       type: number
  *       401:
  *         description: 인증 실패
  *       500:
@@ -188,7 +205,8 @@ router.post('/login', async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        count: user.count
       }
     });
   } catch (error) {
@@ -226,6 +244,8 @@ router.post('/login', async (req, res) => {
  *                       type: string
  *                     name:
  *                       type: string
+ *                     count:
+ *                       type: number
  *       400:
  *         description: 잘못된 요청 또는 카카오 로그인 실패
  */
@@ -251,7 +271,6 @@ router.post('/kakao-login', async (req, res) => {
     let user = await User.findOne({ kakaoId: kakaoUser.id });
     
     if (!user) {
-      // 카카오 계정의 이메일과 이름 사용
       const kakaoEmail = kakaoUser.kakao_account?.email;
       const kakaoName = kakaoUser.properties?.nickname || 'Kakao User';
       
@@ -262,7 +281,8 @@ router.post('/kakao-login', async (req, res) => {
         kakaoId: kakaoUser.id,
         age: 0,
         gender: 'other',
-        occupation: 'not specified'
+        occupation: 'not specified',
+        count: 0  // 초기 count 설정
       });
       await user.save();
     }
@@ -281,7 +301,8 @@ router.post('/kakao-login', async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        count: user.count
       }
     });
   } catch (error) {
@@ -289,6 +310,99 @@ router.post('/kakao-login', async (req, res) => {
     res.status(400).json({ error: 'Kakao login failed.' });
   }
 });
+
+/**
+ * @swagger
+ * /api/users/count:
+ *   get:
+ *     summary: 현재 사용자의 인터뷰 카운트 조회
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 카운트 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 count:
+ *                   type: number
+ *                   description: 현재 인터뷰 횟수
+ *       401:
+ *         description: 인증 실패
+ *       404:
+ *         description: 사용자를 찾을 수 없음
+ */
+router.get('/count', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.user_id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ count: user.count || 0 });
+  } catch (error) {
+    console.error('Count fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch count' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/increment-count:
+ *   post:
+ *     summary: 사용자의 인터뷰 카운트 증가
+ *     description: 사용자의 인터뷰 count를 1 증가시킵니다.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 카운트 증가 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Count incremented successfully
+ *                 currentCount:
+ *                   type: number
+ *                   description: 증가된 후의 현재 카운트
+ *                   example: 1
+ *       401:
+ *         description: 인증 실패
+ *       404:
+ *         description: 사용자를 찾을 수 없음
+ *       500:
+ *         description: 서버 에러
+ */
+router.post('/increment-count', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.user_id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    user.count = (user.count || 0) + 1;
+    await user.save();
+
+    res.json({ 
+      message: 'Count incremented successfully',
+      currentCount: user.count
+    });
+  } catch (error) {
+    console.error('Count increment error:', error);
+    res.status(500).json({ error: 'Failed to increment count' });
+  }
+});
+
+// ... (나머지 라우트들: profile, change-password, account delete 등은 유지)
+
+module.exports = router;
 
 /**
  * @swagger
@@ -516,6 +630,57 @@ router.delete('/account', auth, async (req, res) => {
   } catch (error) {
     console.error('Account deletion error:', error);
     res.status(500).json({ error: 'Error deleting account' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/increment-count:
+ *   post:
+ *     summary: 사용자의 인터뷰 카운트 증가
+ *     description: 사용자의 인터뷰 count를 1 증가시킵니다.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 카운트 증가 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Count incremented successfully
+ *                 currentCount:
+ *                   type: number
+ *                   description: 증가된 후의 현재 카운트
+ *                   example: 1
+ *       401:
+ *         description: 인증 실패
+ *       500:
+ *         description: 서버 에러
+ */
+router.post('/increment-count', auth, async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.user.user_id,
+      { $inc: { count: 1 } },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ 
+      message: 'Count incremented successfully',
+      currentCount: user.count
+    });
+  } catch (error) {
+    console.error('Count increment error:', error);
+    res.status(500).json({ error: 'Failed to increment count' });
   }
 });
 
