@@ -8,7 +8,7 @@ const User = require('../models/user');
  * @swagger
  * /api/interviews/submit:
  *   post:
- *     summary: 인터뷰 결과 제출
+ *     summary: 인터뷰 결과 제출 (3개의 Q&A 세트)
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
@@ -21,15 +21,34 @@ const User = require('../models/user');
  *             properties:
  *               questions_answers:
  *                 type: array
+ *                 description: 3개의 질문-답변 세트
  *                 items:
  *                   type: object
+ *                   required:
+ *                     - question
+ *                     - answer
+ *                     - order
  *                   properties:
  *                     question:
  *                       type: string
+ *                       example: "첫 번째 질문입니다."
  *                     answer:
  *                       type: string
+ *                       example: "첫 번째 답변입니다."
  *                     order:
  *                       type: number
+ *                       example: 1
+ *           example:
+ *             questions_answers:
+ *               - question: "첫 번째 질문입니다."
+ *                 answer: "첫 번째 답변입니다."
+ *                 order: 1
+ *               - question: "두 번째 질문입니다."
+ *                 answer: "두 번째 답변입니다."
+ *                 order: 2
+ *               - question: "세 번째 질문입니다."
+ *                 answer: "세 번째 답변입니다."
+ *                 order: 3
  *     responses:
  *       201:
  *         description: 인터뷰 제출 성공
@@ -43,6 +62,7 @@ const User = require('../models/user');
  *                   example: Interview submitted successfully
  *                 interview_count:
  *                   type: number
+ *                   description: 현재 사용자의 총 인터뷰 횟수
  *                   example: 1
  */
 router.post('/submit', auth, async (req, res) => {
@@ -77,7 +97,8 @@ router.post('/submit', auth, async (req, res) => {
  * @swagger
  * /api/interviews/history:
  *   get:
- *     summary: 사용자의 인터뷰 히스토리 조회
+ *     summary: 사용자의 모든 인터뷰 히스토리 조회
+ *     description: 사용자가 수행한 모든 인터뷰 기록을 최신순으로 조회합니다.
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
@@ -93,22 +114,29 @@ router.post('/submit', auth, async (req, res) => {
  *                 properties:
  *                   user_id:
  *                     type: string
+ *                     description: 사용자 ID
  *                   interview_count:
  *                     type: number
+ *                     description: 인터뷰 회차
  *                   questions_answers:
  *                     type: array
+ *                     description: 질문-답변 세트 목록
  *                     items:
  *                       type: object
  *                       properties:
  *                         question:
  *                           type: string
+ *                           description: 질문 내용
  *                         answer:
  *                           type: string
+ *                           description: 답변 내용
  *                         order:
  *                           type: number
+ *                           description: 질문 순서
  *                   createdAt:
  *                     type: string
  *                     format: date-time
+ *                     description: 인터뷰 수행 시간
  */
 router.get('/history', auth, async (req, res) => {
   try {
@@ -127,6 +155,7 @@ router.get('/history', auth, async (req, res) => {
  * /api/interviews/{interview_count}:
  *   get:
  *     summary: 특정 회차의 인터뷰 상세 조회
+ *     description: 사용자의 특정 회차 인터뷰 내용을 상세 조회합니다.
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
@@ -137,6 +166,7 @@ router.get('/history', auth, async (req, res) => {
  *         schema:
  *           type: integer
  *         description: 조회할 인터뷰의 회차 번호
+ *         example: 1
  *     responses:
  *       200:
  *         description: 성공
@@ -147,24 +177,39 @@ router.get('/history', auth, async (req, res) => {
  *               properties:
  *                 user_id:
  *                   type: string
+ *                   description: 사용자 ID
  *                 interview_count:
  *                   type: number
+ *                   description: 인터뷰 회차
  *                 questions_answers:
  *                   type: array
+ *                   description: 질문-답변 세트 목록
  *                   items:
  *                     type: object
  *                     properties:
  *                       question:
  *                         type: string
+ *                         example: "첫 번째 질문입니다."
  *                       answer:
  *                         type: string
+ *                         example: "첫 번째 답변입니다."
  *                       order:
  *                         type: number
+ *                         example: 1
  *                 createdAt:
  *                   type: string
  *                   format: date-time
+ *                   description: 인터뷰 수행 시간
  *       404:
  *         description: 인터뷰를 찾을 수 없음
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Interview not found
  */
 router.get('/:interview_count', auth, async (req, res) => {
   try {
