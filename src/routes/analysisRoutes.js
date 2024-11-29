@@ -4,7 +4,8 @@ const mongoose = require('mongoose');
 const { body, param, query, validationResult } = require('express-validator');
 const auth = require('../middleware/auth');
 const Analysis = require('../models/analysis');
-const EmotionAverage = require('../models/emotionaverage');
+const Interview = require('../models/interview');        // 추가
+const EmotionAverage = require('../models/emotionaverage');  // 추가
 
 // 표준화된 응답 생성 헬퍼 함수
 const createResponse = (success, message, data = null, meta = null) => ({
@@ -1120,5 +1121,190 @@ router.put(
       }
     }
   );
+
+/**
+ * @swagger
+ * /api/analysis/combined/{interview_count}:
+ *   get:
+ *     summary: 특정 회차의 모든 데이터 조회
+ *     description: 인터뷰 내용, 점수, 안면감정분석 결과를 모두 포함한 종합 데이터를 조회합니다.
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: interview_count
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 조회할 인터뷰 회차 번호
+ *     responses:
+ *       200:
+ *         description: 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     interview_data:
+ *                       type: object
+ *                       properties:
+ *                         questions_answers:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               question:
+ *                                 type: string
+ *                               answer:
+ *                                 type: string
+ *                               order:
+ *                                 type: integer
+ *                         score:
+ *                           type: number
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                     emotion_analysis:
+ *                       type: object
+ *                       properties:
+ *                         summary:
+ *                           type: object
+ *                           properties:
+ *                             total_analyses:
+ *                               type: integer
+ *                             status:
+ *                               type: string
+ *                               enum: [completed, in_progress]
+ *                             average_result:
+ *                               type: object
+ *                               properties:
+ *                                 face_confidence:
+ *                                   type: number
+ *                                 emotion:
+ *                                   type: object
+ *                                   properties:
+ *                                     angry:
+ *                                       type: number
+ *                                     disgust:
+ *                                       type: number
+ *                                     fear:
+ *                                       type: number
+ *                                     happy:
+ *                                       type: number
+ *                                     neutral:
+ *                                       type: number
+ *                                     sad:
+ *                                       type: number
+ *                                     surprise:
+ *                                       type: number
+ *                         individual_results:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               timestamp:
+ *                                 type: string
+ *                                 format: date-time
+ *                               analysis:
+ *                                 type: object
+ *       403:
+ *         description: 권한 없음
+ *       404:
+ *         description: 데이터를 찾을 수 없음
+ *       500:
+ *         description: 서버 에러
+ */
+
+router.get(
+  '/combined/:interview_count',
+  auth(),
+  [validationRules.interviewCount],
+  async (req, res) => {
+      try {
+          const errors = validationResult(req);
+          if (!errors.isEmpty()) {
+              return res.status(400).json(createResponse(
+                  false,
+                  'Validation failed',
+                  null,
+                  { errors: errors.array() }
+              ));
+          }
+
+          const interviewCount = parseInt(req.params.interview_count);
+          
+          // 병렬로 모든 데이터 조회
+          const [interview, analyses, averageAnalysis] = await Promise.all([
+              Interview.findOne({
+                  user_id: new mongoose.Types.ObjectId(req.user.user_id),
+                  interview_count: interviewCount
+              }),
+              Analysis.find({
+                  userId: new mongoose.Types.ObjectId(req.user.user_id),
+                  count: interviewCount
+              }).sort({ serverTimestamp: -1 }),
+              EmotionAverage.findOne({ count: interviewCount })
+          ]);
+
+          // 데이터가 없는 경우 처리
+          if (!interview && !analyses.length) {
+              return res.status(404).json(createResponse(
+                  false,
+                  'No data found for this interview count'
+              ));
+          }
+
+          const response = {
+              interview_data: interview ? {
+                  questions_answers: interview.questions_answers,
+                  score: interview.score,
+                  createdAt: interview.createdAt
+              } : null,
+              emotion_analysis: {
+                  summary: {
+                      total_analyses: analyses.length,
+                      status: analyses.length >= 6 ? 'completed' : 'in_progress',
+                      average_result: averageAnalysis
+                  },
+                  individual_results: analyses.map(a => ({
+                      timestamp: a.serverTimestamp,
+                      analysis: a.analysis_result[0]
+                  }))
+              }
+          };
+
+          // 캐싱 설정 (5분)
+          res.set('Cache-Control', 'private, max-age=300');
+
+          res.json(createResponse(
+              true,
+              'Combined data retrieved successfully',
+              response
+          ));
+      } catch (error) {
+          console.error('Combined data fetch error:', error);
+          
+          const errorMessage = error.name === 'CastError' 
+              ? 'Invalid interview count format'
+              : 'Error retrieving combined data';
+          
+          res.status(500).json(createResponse(
+              false,
+              errorMessage,
+              null,
+              { error: error.message }
+          ));
+      }
+  }
+);
 
 module.exports = router;
