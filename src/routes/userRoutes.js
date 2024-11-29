@@ -64,16 +64,64 @@ const validateRequest = (rules) => {
  * /api/users/register:
  *   post:
  *     summary: 새로운 사용자 등록
+ *     description: 새로운 사용자 계정을 생성합니다.
  *     tags: [Users]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/User'
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *               - name
+ *               - age
+ *               - gender
+ *               - occupation
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: 사용자 이메일 주소
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *                 description: 비밀번호 (최소 6자)
+ *               name:
+ *                 type: string
+ *                 description: 사용자 이름
+ *               age:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 120
+ *                 description: 사용자 나이
+ *               gender:
+ *                 type: string
+ *                 enum: [male, female, other]
+ *                 description: 성별
+ *               occupation:
+ *                 type: string
+ *                 description: 직업
  *     responses:
  *       201:
  *         description: 회원가입 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: User registered successfully
+ *       400:
+ *         description: 잘못된 요청 (유효성 검증 실패)
+ *       409:
+ *         description: 이메일 중복
+ *
  */
 router.post(
   '/register',
@@ -136,7 +184,57 @@ router.post(
  * /api/users/login:
  *   post:
  *     summary: 사용자 로그인
+ *     description: 이메일과 비밀번호로 로그인합니다.
  *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: 사용자 이메일
+ *               password:
+ *                 type: string
+ *                 description: 비밀번호
+ *     responses:
+ *       200:
+ *         description: 로그인 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     token:
+ *                       type: string
+ *                       description: JWT 토큰
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         count:
+ *                           type: integer
+ *       401:
+ *         description: 인증 실패
  */
 router.post(
   '/login',
@@ -191,7 +289,19 @@ router.post(
  * /api/users/kakao-login:
  *   post:
  *     summary: 카카오 로그인
+ *     description: 카카오 액세스 토큰을 사용하여 로그인합니다.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 카카오 로그인 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LoginResponse'
+ *       400:
+ *         description: 잘못된 요청 또는 카카오 토큰 오류
  */
 router.post('/kakao-login', async (req, res) => {
   const session = await mongoose.startSession();
@@ -270,7 +380,21 @@ router.post('/kakao-login', async (req, res) => {
  * /api/users/profile:
  *   get:
  *     summary: 사용자 프로필 조회
+ *     description: 현재 로그인한 사용자의 프로필 정보를 조회합니다.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 프로필 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserResponse'
+ *       401:
+ *         description: 인증되지 않은 접근
+ *       404:
+ *         description: 사용자를 찾을 수 없음
  */
 router.get('/profile', auth(), async (req, res) => {
   try {
@@ -296,7 +420,39 @@ router.get('/profile', auth(), async (req, res) => {
  * /api/users/profile:
  *   put:
  *     summary: 사용자 프로필 수정
+ *     description: 현재 로그인한 사용자의 프로필 정보를 수정합니다.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               age:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 120
+ *               gender:
+ *                 type: string
+ *                 enum: [male, female, other]
+ *               occupation:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 프로필 수정 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserResponse'
+ *       400:
+ *         description: 잘못된 요청
+ *       401:
+ *         description: 인증되지 않은 접근
  */
 router.put(
   '/profile',
@@ -338,7 +494,34 @@ router.put(
  * /api/users/change-password:
  *   put:
  *     summary: 비밀번호 변경
+ *     description: 현재 로그인한 사용자의 비밀번호를 변경합니다.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 description: 현재 비밀번호
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 6
+ *                 description: 새 비밀번호
+ *     responses:
+ *       200:
+ *         description: 비밀번호 변경 성공
+ *       401:
+ *         description: 현재 비밀번호가 일치하지 않음
+ *       400:
+ *         description: 잘못된 요청
  */
 router.put(
   '/change-password',
@@ -382,7 +565,30 @@ router.put(
  * /api/users/count:
  *   get:
  *     summary: 현재 사용자의 인터뷰 카운트 조회
+ *     description: 현재 로그인한 사용자의 인터뷰 회차를 조회합니다.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 카운트 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     count:
+ *                       type: integer
+ *       401:
+ *         description: 인증되지 않은 접근
+ *       404:
+ *         description: 사용자를 찾을 수 없음
  */
 router.get('/count', auth(), async (req, res) => {
   try {
@@ -410,7 +616,30 @@ router.get('/count', auth(), async (req, res) => {
  * /api/users/increment-count:
  *   post:
  *     summary: 사용자의 인터뷰 카운트 증가
+ *     description: 현재 로그인한 사용자의 인터뷰 회차를 1 증가시킵니다.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 카운트 증가 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     currentCount:
+ *                       type: integer
+ *       401:
+ *         description: 인증되지 않은 접근
+ *       404:
+ *         description: 사용자를 찾을 수 없음
  */
 router.post('/increment-count', auth(), async (req, res) => {
   try {
@@ -441,7 +670,29 @@ router.post('/increment-count', auth(), async (req, res) => {
  * /api/users/account:
  *   delete:
  *     summary: 회원 탈퇴
+ *     description: 현재 로그인한 사용자의 계정을 삭제합니다.
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: 계정 삭제 확인을 위한 현재 비밀번호
+ *     responses:
+ *       200:
+ *         description: 계정 삭제 성공
+ *       401:
+ *         description: 비밀번호가 일치하지 않음
+ *       500:
+ *         description: 서버 에러
  */
 router.delete('/account', auth(), async (req, res) => {
   const session = await mongoose.startSession();
