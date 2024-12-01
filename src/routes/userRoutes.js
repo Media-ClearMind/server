@@ -22,7 +22,7 @@ const userValidationRules = {
     body('password').isLength({ min: 6 }),
     body('name').trim().notEmpty(),
     body('age').isInt({ min: 1, max: 120 }),
-    body('gender').isIn(['남성', '여성', '기타']),
+    body('gender').isIn(['남성', '여성']),
     body('occupation').trim().notEmpty()
   ],
   login: [
@@ -36,7 +36,7 @@ const userValidationRules = {
   updateProfile: [
     body('name').optional().trim().notEmpty(),
     body('age').optional().isInt({ min: 1, max: 120 }),
-    body('gender').optional().isIn(['남성', '여성', '기타']),
+    body('gender').optional().isIn(['남성', '여성']),
     body('occupation').optional().trim().notEmpty()
   ]
 };
@@ -98,7 +98,7 @@ const validateRequest = (rules) => {
  *                 description: 사용자 나이
  *               gender:
  *                 type: string
- *                 enum: [남성, 여성, 기타]
+ *                 enum: [남성, 여성]
  *                 description: 성별
  *               occupation:
  *                 type: string
@@ -439,7 +439,7 @@ router.get('/profile', auth(), async (req, res) => {
  *                 maximum: 120
  *               gender:
  *                 type: string
- *                 enum: [남성, 여성, 기타]
+ *                 enum: [남성, 여성]
  *               occupation:
  *                 type: string
  *     responses:
