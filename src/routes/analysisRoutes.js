@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const { body, param, query, validationResult } = require('express-validator');
+const { query, param, validationResult } = require('express-validator');
 const auth = require('../middleware/auth');
 const Analysis = require('../models/analysis');
-const Interview = require('../models/interview');        // 추가
-const EmotionAverage = require('../models/emotionaverage');  // 추가
+const Interview = require('../models/interview');
+const EmotionAverage = require('../models/emotionaverage');
 
 // 표준화된 응답 생성 헬퍼 함수
 const createResponse = (success, message, data = null, meta = null) => ({
@@ -23,179 +23,8 @@ const validationRules = {
   dateRange: [
     query('startDate').optional().isISO8601(),
     query('endDate').optional().isISO8601()
-  ],
-  score: [
-    body('final_score').isFloat({ min: 0, max: 100 }),
-    body('emotion_scores').isObject().optional()
-      .custom((scores) => {
-        const validEmotions = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'];
-        const emotions = Object.keys(scores);
-        return emotions.every(emotion => 
-          validEmotions.includes(emotion) && 
-          typeof scores[emotion] === 'number' && 
-          scores[emotion] >= 0 && 
-          scores[emotion] <= 100
-        );
-      })
   ]
 };
-
-// 유효성 검증 미들웨어
-const validateRequest = (rules) => {
-  return async (req, res, next) => {
-    await Promise.all(rules.map(validation => validation.run(req)));
-    
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(createResponse(
-        false,
-        'Validation failed',
-        null,
-        { errors: errors.array() }
-      ));
-    }
-    next();
-  };
-};
-
-// 사용자 권한 검증 미들웨어
-const verifyUserAccess = async (req, res, next) => {
-  try {
-    const userId = req.params.user_id || req.user.user_id;
-    if (userId !== req.user.user_id) {
-      return res.status(403).json(createResponse(
-        false,
-        'Unauthorized access'
-      ));
-    }
-    next();
-  } catch (error) {
-    res.status(500).json(createResponse(false, 'Authorization check failed'));
-  }
-};
-
-// 감정 점수 검증 유틸리티 함수
-const validateEmotionScores = (scores) => {
-    if (!scores) return false;
-    const validEmotions = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'];
-    return validEmotions.every(emotion => 
-      typeof scores[emotion] === 'number' && 
-      scores[emotion] >= 0 && 
-      scores[emotion] <= 100
-    );
-  };
-  
-  // 분석 데이터 포맷팅 유틸리티 함수
-  const formatAnalysis = (analysis) => ({
-    analysis_id: analysis._id,
-    date: analysis.createdAt,
-    face_analysis: {
-      confidence: Number(analysis.face_analysis.confidence.toFixed(2)),
-      emotion_scores: Object.fromEntries(
-        Object.entries(analysis.face_analysis.emotion_scores)
-          .map(([k, v]) => [k, Number(v.toFixed(2))])
-      )
-    },
-    voice_analysis: {
-      confidence: Number(analysis.voice_analysis.confidence.toFixed(2)),
-      stress_level: Number(analysis.voice_analysis.stress_level.toFixed(2))
-    }
-  });
-
-/**
- * @swagger
- * /api/analysis/detail:
- *   get:
- *     summary: 특정 분석 결과 상세 조회
- *     description: 분석 ID를 기반으로 특정 분석 결과의 상세 정보를 조회합니다.
- *     tags: [Analysis]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: 조회할 분석 결과의 ID
- *     responses:
- *       200:
- *         description: 분석 결과 조회 성공
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                 data:
- *                   $ref: '#/components/schemas/Analysis'
- *       400:
- *         description: 잘못된 요청
- *       401:
- *         description: 인증되지 않은 접근
- *       403:
- *         description: 권한 없음
- *       404:
- *         description: 분석 결과를 찾을 수 없음
- *       500:
- *         description: 서버 에러
- */
-
-router.get(
-  '/detail',
-  auth(),
-  [
-    query('id').isMongoId().withMessage('Invalid analysis ID')
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json(createResponse(
-          false,
-          'Validation failed',
-          null,
-          { errors: errors.array() }
-        ));
-      }
-
-      const analysis = await Analysis.findById(req.query.id);
-      
-      if (!analysis) {
-        return res.status(404).json(createResponse(
-          false,
-          'Analysis not found'
-        ));
-      }
-
-      // 권한 검증: 자신의 분석 결과만 조회 가능
-      if (analysis.userId.toString() !== req.user.user_id) {
-        return res.status(403).json(createResponse(
-          false,
-          'Unauthorized access'
-        ));
-      }
-
-      res.json(createResponse(
-        true,
-        'Analysis retrieved successfully',
-        analysis
-      ));
-    } catch (error) {
-      console.error('Analysis detail error:', error);
-      res.status(500).json(createResponse(
-        false,
-        'Error fetching analysis detail',
-        null,
-        { error: error.message }
-      ));
-    }
-  }
-);
 
 /**
  * @swagger
@@ -212,6 +41,7 @@ router.get(
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
  *         description: 조회할 인터뷰 회차 번호
  *     responses:
  *       200:
@@ -224,8 +54,6 @@ router.get(
  *                 status:
  *                   type: string
  *                   example: success
- *                 message:
- *                   type: string
  *                 data:
  *                   type: object
  *                   properties:
@@ -235,22 +63,15 @@ router.get(
  *                         total_analyses:
  *                           type: integer
  *                           description: 현재까지 완료된 분석 횟수
- *                         required_analyses:
- *                           type: integer
- *                           description: 필요한 총 분석 횟수
- *                           example: 6
  *                         status:
  *                           type: string
  *                           enum: [completed, in_progress]
- *                           description: 전체 분석 완료 여부
  *                         average_result:
  *                           type: object
- *                           nullable: true
  *                           properties:
  *                             face_confidence:
  *                               type: number
- *                               description: 평균 얼굴 분석 신뢰도
- *                             emotion_scores:
+ *                             emotion:
  *                               type: object
  *                               properties:
  *                                 angry:
@@ -267,10 +88,6 @@ router.get(
  *                                   type: number
  *                                 surprise:
  *                                   type: number
- *                             date:
- *                               type: string
- *                               format: date
- *                               description: 평균 분석 날짜
  *                     analyses:
  *                       type: array
  *                       items:
@@ -278,253 +95,204 @@ router.get(
  *                         properties:
  *                           analysis_id:
  *                             type: string
- *                             description: 개별 분석의 고유 ID
  *                           timestamp:
  *                             type: string
  *                             format: date-time
- *                             description: 분석 시간
- *                           face_analysis:
- *                             type: object
- *                             properties:
- *                               age:
- *                                 type: integer
- *                                 description: 추정 나이
- *                               dominant_emotion:
- *                                 type: string
- *                                 description: 주요 감정
- *                               dominant_gender:
- *                                 type: string
- *                                 description: 주요 성별
- *                               emotion:
- *                                 type: object
- *                                 properties:
- *                                   angry:
- *                                     type: number
- *                                   disgust:
- *                                     type: number
- *                                   fear:
- *                                     type: number
- *                                   happy:
- *                                     type: number
- *                                   neutral:
- *                                     type: number
- *                                   sad:
- *                                     type: number
- *                                   surprise:
- *                                     type: number
- *                               face_confidence:
- *                                 type: number
- *                               gender:
- *                                 type: object
- *                                 properties:
- *                                   Woman:
- *                                     type: number
- *                                   Man:
- *                                     type: number
- *                               region:
- *                                 type: object
- *                                 properties:
- *                                   x:
- *                                     type: number
- *                                   y:
- *                                     type: number
- *                                   w:
- *                                     type: number
- *                                   h:
- *                                     type: number
- *                                   left_eye:
- *                                     type: array
- *                                     items:
- *                                       type: number
- *                                   right_eye:
- *                                     type: array
- *                                     items:
- *                                       type: number
- *       400:
- *         description: 잘못된 요청
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: error
- *                 message:
- *                   type: string
- *       404:
- *         description: 분석 결과를 찾을 수 없음
- *       500:
- *         description: 서버 에러
+ *                           result:
+ *                             $ref: '#/components/schemas/FaceAnalysis'
  */
 router.get(
-    '/current/:interview_count',
-    auth(),
-    [validationRules.interviewCount],
-    async (req, res) => {
-      try {
-        const interviewCount = parseInt(req.params.interview_count);
-        
-        // 개별 분석 결과들 조회
-        const analyses = await Analysis.find({
-            userId: new mongoose.Types.ObjectId(req.user.user_id),
-            count: interviewCount
-        })
-        .sort({ serverTimestamp: -1 })
-        .select('analysis_result serverTimestamp status');
-
-        // 평균 분석 결과 조회
-        const averageAnalysis = await EmotionAverage.findOne({
-            count: interviewCount
-        });
-
-        if (!analyses.length) {
-          return res.status(404).json(createResponse(
-            false,
-            'No analysis found for this interview count'
-          ));
-        }
-
-        const response = {
-          summary: {
-            total_analyses: analyses.length,
-            required_analyses: 6,
-            status: analyses.length >= 6 ? 'completed' : 'in_progress',
-            average_result: averageAnalysis ? {
-              face_confidence: averageAnalysis.face_confidence,
-              emotion_scores: averageAnalysis.emotion,
-              date: averageAnalysis.date
-            } : null
-          },
-          analyses: analyses.map(analysis => ({
-            analysis_id: analysis._id,
-            timestamp: analysis.serverTimestamp,
-            face_analysis: analysis.analysis_result[0]
-          }))
-        };
-
-        // 캐싱 설정 (5분)
-        res.set('Cache-Control', 'private, max-age=300');
-
-        res.json(createResponse(
-          true,
-          'Analysis data retrieved successfully',
-          response
-        ));
-
-      } catch (error) {
-        console.error('Analysis fetch error:', error);
-        
-        const errorMessage = error.name === 'CastError' 
-          ? 'Invalid interview count format'
-          : 'Failed to fetch analysis data';
-        
-        res.status(500).json(createResponse(
-          false,
-          errorMessage,
-          null,
-          { error: error.message }
-        ));
-      }
-    }
-);
-
-/**
- * @swagger
- * /api/analysis/score:
- *   put:
- *     summary: 감정 분석 평균값에 최종 점수 추가
- *     description: 특정 회차의 감정 분석 평균값에 최종 점수를 추가합니다.
- *     tags: [Analysis]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - interview_count
- *               - final_score
- *             properties:
- *               interview_count:
- *                 type: integer
- *                 description: 인터뷰 회차
- *               final_score:
- *                 type: number
- *                 minimum: 0
- *                 maximum: 100
- *                 description: 최종 점수
- *     responses:
- *       200:
- *         description: 점수 업데이트 성공
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                 message:
- *                   type: string
- *                 data:
- *                   $ref: '#/components/schemas/Analysis'
- *       400:
- *         description: 잘못된 요청
- *       404:
- *         description: 분석 결과를 찾을 수 없음
- */
-router.put(
-  '/score',
+  '/current/:interview_count',
   auth(),
-  validateRequest([
-    body('interview_count').isInt({ min: 1 }),
-    body('final_score').isFloat({ min: 0, max: 100 })
-  ]),
+  [validationRules.interviewCount],
   async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
-      const { interview_count, final_score } = req.body;
+      const interviewCount = parseInt(req.params.interview_count);
+      
+      // 개별 분석 결과들 조회
+      const analyses = await Analysis.find({
+        userId: new mongoose.Types.ObjectId(req.user.user_id),
+        count: interviewCount
+      })
+      .sort({ serverTimestamp: -1 })
+      .select('analysis_result serverTimestamp');
 
-      const analysis = await Analysis.findOneAndUpdate(
-        { 
-          interview_count,
-          user_id: new mongoose.Types.ObjectId(req.user.user_id)
-        },
-        { $set: { final_score } },
-        { 
-          new: true,
-          session,
-          runValidators: true
-        }
-      );
+      // 평균 분석 결과 조회
+      const averageAnalysis = await EmotionAverage.findOne({
+        count: interviewCount
+      });
 
-      if (!analysis) {
-        await session.abortTransaction();
+      if (!analyses.length) {
         return res.status(404).json(createResponse(
           false,
           'No analysis found for this interview count'
         ));
       }
 
-      await session.commitTransaction();
-      res.json(createResponse(
-        true,
-        'Score updated successfully',
-        analysis
-      ));
+      const response = {
+        summary: {
+          total_analyses: analyses.length,
+          status: analyses.length >= 6 ? 'completed' : 'in_progress',
+          average_result: averageAnalysis ? {
+            face_confidence: averageAnalysis.face_confidence,
+            emotion: averageAnalysis.emotion
+          } : null
+        },
+        analyses: analyses.map(analysis => ({
+          analysis_id: analysis._id,
+          timestamp: analysis.serverTimestamp,
+          result: analysis.analysis_result[0]
+        }))
+      };
+
+      // 캐싱 설정 (5분)
+      res.set('Cache-Control', 'private, max-age=300');
+
+      res.json(createResponse(true, 'Analysis data retrieved successfully', response));
     } catch (error) {
-      await session.abortTransaction();
-      console.error('Score update error:', error);
+      console.error('Analysis fetch error:', error);
       res.status(500).json(createResponse(
         false,
-        'Failed to update score'
+        'Failed to fetch analysis data',
+        null,
+        { error: error.message }
       ));
-    } finally {
-      session.endSession();
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/analysis/combined:
+ *   get:
+ *     summary: 회차별 종합 데이터 조회
+ *     description: 특정 회차의 인터뷰 데이터, 개별 분석 결과, 평균 분석 결과를 모두 조회합니다.
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: count
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: 조회할 인터뷰 회차 번호
+ *     responses:
+ *       200:
+ *         description: 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     interview_data:
+ *                       type: object
+ *                       properties:
+ *                         questions_answers:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               question:
+ *                                 type: string
+ *                               answer:
+ *                                 type: string
+ *                               order:
+ *                                 type: integer
+ *                         score:
+ *                           type: integer
+ *                     emotion_analysis:
+ *                       type: object
+ *                       properties:
+ *                         summary:
+ *                           $ref: '#/components/schemas/AnalysisSummary'
+ *                         individual_results:
+ *                           type: array
+ *                           items:
+ *                             $ref: '#/components/schemas/FaceAnalysis'
+ */
+router.get(
+  '/combined',
+  auth(),
+  [
+    query('count').isInt({ min: 1 }).withMessage('Interview count must be a positive integer')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json(createResponse(
+          false,
+          'Validation failed',
+          null,
+          { errors: errors.array() }
+        ));
+      }
+
+      const count = parseInt(req.query.count);
+      const userId = req.user.user_id;
+      
+      // 병렬로 모든 데이터 조회
+      const [interview, analyses, averageAnalysis] = await Promise.all([
+        Interview.findOne({
+          user_id: new mongoose.Types.ObjectId(userId),
+          interview_count: count
+        }),
+        Analysis.find({
+          userId: new mongoose.Types.ObjectId(userId),
+          count: count
+        }).sort({ serverTimestamp: -1 }),
+        EmotionAverage.findOne({ count: count })
+      ]);
+
+      if (!interview && !analyses.length) {
+        return res.status(404).json(createResponse(
+          false,
+          'No data found for this interview count'
+        ));
+      }
+
+      const response = {
+        interview_data: interview ? {
+          questions_answers: interview.questions_answers,
+          score: interview.score
+        } : null,
+        emotion_analysis: {
+          summary: {
+            total_analyses: analyses.length,
+            status: analyses.length >= 6 ? 'completed' : 'in_progress',
+            average_result: averageAnalysis
+          },
+          individual_results: analyses.map(a => ({
+            timestamp: a.serverTimestamp,
+            analysis: a.analysis_result[0]
+          }))
+        }
+      };
+
+      // 캐싱 설정 (5분)
+      res.set('Cache-Control', 'private, max-age=300');
+
+      res.json(createResponse(
+        true,
+        'Combined data retrieved successfully',
+        response
+      ));
+    } catch (error) {
+      console.error('Combined data fetch error:', error);
+      res.status(500).json(createResponse(
+        false,
+        'Error retrieving combined data',
+        null,
+        { error: error.message }
+      ));
     }
   }
 );
@@ -956,378 +724,6 @@ router.get(
         { error: error.message }
       ));
     }
-  }
-);
-
-/**
- * @swagger
- * /api/analysis/update-score:
- *   put:
- *     summary: 분석 결과에 최종 점수 추가
- *     description: 특정 분석 결과에 최종 점수와 감정 점수를 추가합니다.
- *     tags: [Analysis]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - analysisId
- *               - final_score
- *             properties:
- *               analysisId:
- *                 type: string
- *                 description: 수정할 분석 결과의 ID
- *               final_score:
- *                 type: number
- *                 minimum: 0
- *                 maximum: 100
- *                 description: 최종 점수 (0-100)
- *               emotion_scores:
- *                 type: object
- *                 description: 감정별 점수 (선택적)
- *                 properties:
- *                   angry:
- *                     type: number
- *                     minimum: 0
- *                     maximum: 100
- *                   disgust:
- *                     type: number
- *                     minimum: 0
- *                     maximum: 100
- *                   fear:
- *                     type: number
- *                     minimum: 0
- *                     maximum: 100
- *                   happy:
- *                     type: number
- *                     minimum: 0
- *                     maximum: 100
- *                   neutral:
- *                     type: number
- *                     minimum: 0
- *                     maximum: 100
- *                   sad:
- *                     type: number
- *                     minimum: 0
- *                     maximum: 100
- *                   surprise:
- *                     type: number
- *                     minimum: 0
- *                     maximum: 100
- *     responses:
- *       200:
- *         description: 점수 업데이트 성공
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                 data:
- *                   $ref: '#/components/schemas/Analysis'
- *       400:
- *         description: 잘못된 요청
- *       401:
- *         description: 인증되지 않은 접근
- *       403:
- *         description: 권한 없음
- *       404:
- *         description: 분석 결과를 찾을 수 없음
- *       500:
- *         description: 서버 에러
- */
-
-router.put(
-  '/update-score',
-  auth(),
-  [
-    body('analysisId').isMongoId().withMessage('Invalid analysis ID'),
-    body('final_score').isFloat({ min: 0, max: 100 }).withMessage('Score must be between 0 and 100'),
-    body('emotion_scores').optional().isObject()
-      .custom((scores) => {
-        if (scores) {
-          const validEmotions = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'];
-          const emotions = Object.keys(scores);
-          return emotions.every(emotion => 
-            validEmotions.includes(emotion) && 
-            typeof scores[emotion] === 'number' && 
-            scores[emotion] >= 0 && 
-            scores[emotion] <= 100
-          );
-        }
-        return true;
-      }).withMessage('Invalid emotion scores format or values')
-  ],
-  async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        await session.abortTransaction();
-        return res.status(400).json(createResponse(
-          false,
-          'Validation failed',
-          null,
-          { errors: errors.array() }
-        ));
-      }
-
-      const { analysisId, final_score, emotion_scores } = req.body;
-
-      const analysis = await Analysis.findById(analysisId)
-        .session(session);
-
-      if (!analysis) {
-        await session.abortTransaction();
-        return res.status(404).json(createResponse(
-          false,
-          'Analysis not found'
-        ));
-      }
-
-      // 권한 검증: 자신의 분석 결과만 수정 가능
-      if (analysis.userId.toString() !== req.user.user_id) {
-        await session.abortTransaction();
-        return res.status(403).json(createResponse(
-          false,
-          'Unauthorized access'
-        ));
-      }
-
-      // 데이터 업데이트
-      if (emotion_scores) {
-        analysis.analysis_result[0].emotion = emotion_scores;
-      }
-      analysis.result = { final_score };
-      
-      await analysis.save({ session });
-      await session.commitTransaction();
-
-      res.json(createResponse(
-        true,
-        'Score updated successfully',
-        analysis
-      ));
-    } catch (error) {
-      await session.abortTransaction();
-      console.error('Score update error:', error);
-      
-      const errorMessage = error.name === 'CastError' 
-        ? 'Invalid ID format'
-        : 'Failed to update score';
-      
-      res.status(500).json(createResponse(
-        false,
-        errorMessage,
-        null,
-        { error: error.message }
-      ));
-    } finally {
-      session.endSession();
-    }
-  }
-);
-
-/**
- * @swagger
- * /api/analysis/combined:
- *   get:
- *     summary: 회차별 종합 데이터 조회
- *     description: 특정 회차의 인터뷰 데이터, 개별 분석 결과, 평균 분석 결과를 모두 조회합니다.
- *     tags: [Analysis]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: count
- *         required: true
- *         schema:
- *           type: integer
- *           minimum: 1
- *         description: 조회할 인터뷰 회차 번호
- *     responses:
- *       200:
- *         description: 조회 성공
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                 data:
- *                   type: object
- *                   properties:
- *                     interview_data:
- *                       type: object
- *                       nullable: true
- *                       properties:
- *                         questions_answers:
- *                           type: array
- *                           items:
- *                             type: object
- *                             properties:
- *                               question:
- *                                 type: string
- *                               answer:
- *                                 type: string
- *                               order:
- *                                 type: integer
- *                         score:
- *                           type: number
- *                         createdAt:
- *                           type: string
- *                           format: date-time
- *                     emotion_analysis:
- *                       type: object
- *                       properties:
- *                         summary:
- *                           type: object
- *                           properties:
- *                             total_analyses:
- *                               type: integer
- *                             status:
- *                               type: string
- *                               enum: [completed, in_progress]
- *                             average_result:
- *                               type: object
- *                               nullable: true
- *                               properties:
- *                                 face_confidence:
- *                                   type: number
- *                                 emotion:
- *                                   type: object
- *                                   properties:
- *                                     angry:
- *                                       type: number
- *                                     disgust:
- *                                       type: number
- *                                     fear:
- *                                       type: number
- *                                     happy:
- *                                       type: number
- *                                     neutral:
- *                                       type: number
- *                                     sad:
- *                                       type: number
- *                                     surprise:
- *                                       type: number
- *                         individual_results:
- *                           type: array
- *                           items:
- *                             type: object
- *                             properties:
- *                               timestamp:
- *                                 type: string
- *                                 format: date-time
- *                               analysis:
- *                                 $ref: '#/components/schemas/Analysis'
- *       400:
- *         description: 잘못된 요청
- *       401:
- *         description: 인증되지 않은 접근
- *       404:
- *         description: 데이터를 찾을 수 없음
- *       500:
- *         description: 서버 에러
- */
-
-router.get(
-  '/combined',
-  auth(),
-  [
-    query('count').isInt({ min: 1 }).withMessage('Interview count must be a positive integer')
-  ],
-  async (req, res) => {
-      try {
-          const errors = validationResult(req);
-          if (!errors.isEmpty()) {
-              return res.status(400).json(createResponse(
-                  false,
-                  'Validation failed',
-                  null,
-                  { errors: errors.array() }
-              ));
-          }
-
-          const count = parseInt(req.query.count);
-          const userId = req.user.user_id;
-          
-          // 병렬로 모든 데이터 조회
-          const [interview, analyses, averageAnalysis] = await Promise.all([
-              Interview.findOne({
-                  user_id: new mongoose.Types.ObjectId(userId),
-                  interview_count: count
-              }),
-              Analysis.find({
-                  userId: new mongoose.Types.ObjectId(userId),
-                  count: count
-              }).sort({ serverTimestamp: -1 }),
-              EmotionAverage.findOne({ count: count })
-          ]);
-
-          // 데이터가 없는 경우 처리
-          if (!interview && !analyses.length) {
-              return res.status(404).json(createResponse(
-                  false,
-                  'No data found for this interview count'
-              ));
-          }
-
-          const response = {
-              interview_data: interview ? {
-                  questions_answers: interview.questions_answers,
-                  score: interview.score,
-                  createdAt: interview.createdAt
-              } : null,
-              emotion_analysis: {
-                  summary: {
-                      total_analyses: analyses.length,
-                      status: analyses.length >= 6 ? 'completed' : 'in_progress',
-                      average_result: averageAnalysis
-                  },
-                  individual_results: analyses.map(a => ({
-                      timestamp: a.serverTimestamp,
-                      analysis: a.analysis_result[0]
-                  }))
-              }
-          };
-
-          // 캐싱 설정 (5분)
-          res.set('Cache-Control', 'private, max-age=300');
-
-          res.json(createResponse(
-              true,
-              'Combined data retrieved successfully',
-              response
-          ));
-      } catch (error) {
-          console.error('Combined data fetch error:', error);
-          
-          const errorMessage = error.name === 'CastError' 
-              ? 'Invalid interview count format'
-              : 'Error retrieving combined data';
-          
-          res.status(500).json(createResponse(
-              false,
-              errorMessage,
-              null,
-              { error: error.message }
-          ));
-      }
   }
 );
 

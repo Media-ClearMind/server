@@ -6,6 +6,7 @@ const auth = require('../middleware/auth');
 const Interview = require('../models/interview');
 const Analysis = require('../models/analysis');
 const User = require('../models/user');
+const EmotionAverage = require('../models/emotionaverage');
 
 // 표준화된 응답 생성 헬퍼 함수
 const createResponse = (success, message, data = null, meta = null) => ({
@@ -17,8 +18,7 @@ const createResponse = (success, message, data = null, meta = null) => ({
 
 // 유효성 검증 규칙
 const validationRules = {
-  interviewCount: param('interview_count').isInt({ min: 1 })
-    .withMessage('Interview count must be a positive integer'),
+  interviewCount: param('interview_count').isInt({ min: 1 }),
   submission: [
     body('questions_answers').isArray({ min: 3, max: 3 })
       .withMessage('Exactly 3 questions and answers are required'),
@@ -29,7 +29,11 @@ const validationRules = {
     body('questions_answers.*.order').isInt({ min: 1, max: 3 })
       .withMessage('Order must be between 1 and 3'),
     body('score').isInt({ min: 0, max: 100 })
-      .withMessage('Score must be between 0 and 100')
+      .withMessage('Score must be between 0 and 100'),
+    body('analysis_results').isArray()
+      .withMessage('Analysis results are required'),
+    body('analysis_results.*.result').isArray()
+      .withMessage('Each analysis result must contain a result array')
   ],
   pagination: [
     query('page').optional().isInt({ min: 1 }),
@@ -55,12 +59,60 @@ const validateRequest = (rules) => {
   };
 };
 
+// 감정 평균 계산 및 업데이트 함수
+async function updateEmotionAverage(analysisResults, count, session) {
+  try {
+    // 현재 분석 결과들에서 감정 데이터 추출
+    const currentEmotions = {};
+    let totalConfidence = 0;
+
+    // 모든 분석 결과의 감정 값 합산
+    analysisResults.forEach(analysis => {
+      const result = analysis.result[0];
+      totalConfidence += result.face_confidence;
+      
+      Object.entries(result.emotion).forEach(([emotion, value]) => {
+        currentEmotions[emotion] = (currentEmotions[emotion] || 0) + value;
+      });
+    });
+
+    // 평균 계산
+    const numResults = analysisResults.length;
+    const averageConfidence = totalConfidence / numResults;
+    const averageEmotions = {};
+    Object.entries(currentEmotions).forEach(([emotion, total]) => {
+      averageEmotions[emotion] = Number((total / numResults).toFixed(3));
+    });
+
+    // 새로운 평균 데이터 생성
+    const newAverage = {
+      count,
+      date: new Date().toISOString().split('T')[0],
+      face_confidence: Number(averageConfidence.toFixed(2)),
+      emotion: averageEmotions,
+      total_analyses: numResults
+    };
+
+    // upsert로 업데이트 또는 생성
+    await EmotionAverage.updateOne(
+      { count },
+      { $set: newAverage },
+      { upsert: true, session }
+    );
+
+    return true;
+  } catch (error) {
+    console.error('Error updating emotion average:', error);
+    throw error;
+  }
+}
+
 /**
  * @swagger
  * /api/interviews/submit:
  *   post:
- *     summary: 인터뷰 결과 제출
- *     description: 3개의 Q&A 세트와 점수를 제출합니다.
+ *     summary: 인터뷰 결과 및 분석 데이터 제출
+ *     description: 3개의 Q&A 세트와 6회의 안면 감정 분석 결과를 함께 제출합니다.
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
@@ -73,6 +125,7 @@ const validateRequest = (rules) => {
  *             required:
  *               - questions_answers
  *               - score
+ *               - analysis_results
  *             properties:
  *               questions_answers:
  *                 type: array
@@ -85,16 +138,95 @@ const validateRequest = (rules) => {
  *                   properties:
  *                     question:
  *                       type: string
+ *                       description: 질문 내용
  *                     answer:
  *                       type: string
+ *                       description: 답변 내용
  *                     order:
  *                       type: integer
  *                       minimum: 1
  *                       maximum: 3
+ *                       description: 질문 순서
  *               score:
  *                 type: integer
  *                 minimum: 0
  *                 maximum: 100
+ *                 description: 인터뷰 점수
+ *               analysis_results:
+ *                 type: array
+ *                 description: 6회의 안면 감정 분석 결과
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     timestamp:
+ *                       type: string
+ *                       format: date-time
+ *                       description: 분석 시간
+ *                     result:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           age:
+ *                             type: integer
+ *                             description: 추정 나이
+ *                           dominant_emotion:
+ *                             type: string
+ *                             description: 주요 감정
+ *                           dominant_gender:
+ *                             type: string
+ *                             description: 추정 성별
+ *                           emotion:
+ *                             type: object
+ *                             properties:
+ *                               angry:
+ *                                 type: number
+ *                               disgust:
+ *                                 type: number
+ *                               fear:
+ *                                 type: number
+ *                               happy:
+ *                                 type: number
+ *                               neutral:
+ *                                 type: number
+ *                               sad:
+ *                                 type: number
+ *                               surprise:
+ *                                 type: number
+ *                           face_confidence:
+ *                             type: number
+ *     responses:
+ *       201:
+ *         description: 인터뷰 및 분석 결과 제출 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Interview submitted successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     interview_count:
+ *                       type: integer
+ *                       description: 인터뷰 회차
+ *                     interview_id:
+ *                       type: string
+ *                       description: 생성된 인터뷰 ID
+ *                     score:
+ *                       type: integer
+ *                       description: 인터뷰 점수
+ *       400:
+ *         description: 잘못된 요청 (유효성 검증 실패)
+ *       401:
+ *         description: 인증되지 않은 접근
+ *       500:
+ *         description: 서버 에러
  */
 router.post(
   '/submit',
@@ -105,7 +237,11 @@ router.post(
     session.startTransaction();
 
     try {
-      const { questions_answers, score } = req.body;
+      const { 
+        questions_answers, 
+        score, 
+        analysis_results 
+      } = req.body;
 
       // 중복된 order 체크
       const orders = new Set(questions_answers.map(qa => qa.order));
@@ -132,12 +268,32 @@ router.post(
         ));
       }
 
-      // 새 인터뷰 데이터 생성
+      // 감정 평균 업데이트
+      await updateEmotionAverage(analysis_results, user.count, session);
+
+      // 분석 결과들 저장
+      const analysisPromises = analysis_results.map(analysisResult => {
+        const analysis = new Analysis({
+          userId: new mongoose.Types.ObjectId(req.user.user_id),
+          count: user.count,
+          serverTimestamp: analysisResult.timestamp,
+          analysis_result: analysisResult.result,
+          result: {
+            status: 'completed',
+            final_score: null
+          }
+        });
+        return analysis.save({ session });
+      });
+
+      await Promise.all(analysisPromises);
+
+      // 인터뷰 데이터 저장
       const interview = new Interview({
         user_id: req.user.user_id,
         interview_count: user.count,
         questions_answers: questions_answers.sort((a, b) => a.order - b.order),
-        score: score
+        score
       });
 
       await interview.save({ session });
@@ -149,7 +305,7 @@ router.post(
         {
           interview_count: user.count,
           interview_id: interview._id,
-          score: score
+          score
         }
       ));
     } catch (error) {
