@@ -129,18 +129,18 @@ async function updateEmotionAverage(analysisResults, count, session) {
  *                 description: 3개의 질문-답변 세트
  *                 example: [
  *                   {
- *                     "question": "본인의 장점을 말씀해주세요",
- *                     "answer": "저는 어떤 일이든 끝까지 책임감을 가지고 마무리하는 것이 장점입니다",
+ *                     "question": "본인의 이름이 무엇인가요?",
+ *                     "answer": "제 이름은 곽재헌일까요?",
  *                     "order": 1
  *                   },
  *                   {
- *                     "question": "지원동기가 무엇인가요?",
- *                     "answer": "귀사의 혁신적인 기술과 발전 가능성을 보고 지원하게 되었습니다",
+ *                     "question": "본인의 배우자 이름이 무엇인가요?",
+ *                     "answer": "김민태일까요?",
  *                     "order": 2
  *                   },
  *                   {
- *                     "question": "입사 후 포부를 말씀해주세요",
- *                     "answer": "회사의 성장과 함께 저도 성장하는 인재가 되고 싶습니다",
+ *                     "question": "다시 한 번 말씀해주시겠어요?",
+ *                     "answer": "장유태일까요?",
  *                     "order": 3
  *                   }
  *                 ]
