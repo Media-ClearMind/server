@@ -18,28 +18,23 @@ const createResponse = (success, message, data = null, meta = null) => ({
 
 // 유효성 검증 규칙
 const validationRules = {
-  interviewCount: param('interview_count').isInt({ min: 1 }),
-  submission: [
-    body('questions_answers').isArray({ min: 3, max: 3 })
-      .withMessage('Exactly 3 questions and answers are required'),
-    body('questions_answers.*.question').notEmpty()
-      .withMessage('Question is required'),
-    body('questions_answers.*.answer').notEmpty()
-      .withMessage('Answer is required'),
-    body('questions_answers.*.order').isInt({ min: 1, max: 3 })
-      .withMessage('Order must be between 1 and 3'),
-    body('score').isInt({ min: 0, max: 100 })
-      .withMessage('Score must be between 0 and 100'),
-    body('analysis_results').isArray()
-      .withMessage('Analysis results are required'),
-    body('analysis_results.*.result').isArray()
-      .withMessage('Each analysis result must contain a result array')
-  ],
-  pagination: [
-    query('page').optional().isInt({ min: 1 }),
-    query('limit').optional().isInt({ min: 1, max: 100 })
-  ]
-};
+    submission: [
+      body('questions_answers').isArray({ min: 3, max: 3 })
+        .withMessage('Exactly 3 questions and answers are required'),
+      body('questions_answers.*.question').notEmpty()
+        .withMessage('Question is required'),
+      body('questions_answers.*.answer').notEmpty()
+        .withMessage('Answer is required'),
+      body('questions_answers.*.order').isInt({ min: 1, max: 3 })
+        .withMessage('Order must be between 1 and 3'),
+      body('score').isInt({ min: 0, max: 100 })
+        .withMessage('Score must be between 0 and 100'),
+      body('analysis_results').isArray({ min: 1 })
+        .withMessage('At least one analysis result is required'),
+      body('analysis_results.*.result').isArray()
+        .withMessage('Each analysis result must contain a result array')
+    ]
+  };
 
 // 유효성 검증 미들웨어
 const validateRequest = (rules) => {
@@ -112,7 +107,7 @@ async function updateEmotionAverage(analysisResults, count, session) {
  * /api/interviews/submit:
  *   post:
  *     summary: 인터뷰 결과 및 분석 데이터 제출
- *     description: 3개의 Q&A 세트와 6회의 안면 감정 분석 결과를 함께 제출합니다.
+ *     description: 인터뷰의 Q&A 데이터, 점수, 안면 감정 분석 결과들을 함께 제출합니다.
  *     tags: [Interviews]
  *     security:
  *       - bearerAuth: []
@@ -129,98 +124,160 @@ async function updateEmotionAverage(analysisResults, count, session) {
  *             properties:
  *               questions_answers:
  *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - question
- *                     - answer
- *                     - order
- *                   properties:
- *                     question:
- *                       type: string
- *                       description: 질문 내용
- *                     answer:
- *                       type: string
- *                       description: 답변 내용
- *                     order:
- *                       type: integer
- *                       minimum: 1
- *                       maximum: 3
- *                       description: 질문 순서
+ *                 minItems: 3
+ *                 maxItems: 3
+ *                 description: 3개의 질문-답변 세트
+ *                 example: [
+ *                   {
+ *                     "question": "본인의 장점을 말씀해주세요",
+ *                     "answer": "저는 어떤 일이든 끝까지 책임감을 가지고 마무리하는 것이 장점입니다",
+ *                     "order": 1
+ *                   },
+ *                   {
+ *                     "question": "지원동기가 무엇인가요?",
+ *                     "answer": "귀사의 혁신적인 기술과 발전 가능성을 보고 지원하게 되었습니다",
+ *                     "order": 2
+ *                   },
+ *                   {
+ *                     "question": "입사 후 포부를 말씀해주세요",
+ *                     "answer": "회사의 성장과 함께 저도 성장하는 인재가 되고 싶습니다",
+ *                     "order": 3
+ *                   }
+ *                 ]
  *               score:
  *                 type: integer
  *                 minimum: 0
  *                 maximum: 100
  *                 description: 인터뷰 점수
+ *                 example: 85
  *               analysis_results:
  *                 type: array
- *                 description: 6회의 안면 감정 분석 결과
- *                 items:
- *                   type: object
- *                   properties:
- *                     timestamp:
- *                       type: string
- *                       format: date-time
- *                       description: 분석 시간
- *                     result:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           age:
- *                             type: integer
- *                             description: 추정 나이
- *                           dominant_emotion:
- *                             type: string
- *                             description: 주요 감정
- *                           dominant_gender:
- *                             type: string
- *                             description: 추정 성별
- *                           emotion:
- *                             type: object
- *                             properties:
- *                               angry:
- *                                 type: number
- *                               disgust:
- *                                 type: number
- *                               fear:
- *                                 type: number
- *                               happy:
- *                                 type: number
- *                               neutral:
- *                                 type: number
- *                               sad:
- *                                 type: number
- *                               surprise:
- *                                 type: number
- *                           face_confidence:
- *                             type: number
+ *                 minItems: 1
+ *                 description: 안면 감정 분석 결과들 (각 질문-답변마다 2회씩, 총 6회)
+ *                 example: [
+ *                   {
+ *                     "timestamp": "2024-03-12T14:30:00.000Z",
+ *                     "result": [{
+ *                       "age": 28,
+ *                       "dominant_emotion": "neutral",
+ *                       "dominant_gender": "Man",
+ *                       "emotion": {
+ *                         "angry": 0.02,
+ *                         "disgust": 0.01,
+ *                         "fear": 0.01,
+ *                         "happy": 0.15,
+ *                         "neutral": 0.75,
+ *                         "sad": 0.03,
+ *                         "surprise": 0.03
+ *                       },
+ *                       "face_confidence": 0.98
+ *                     }]
+ *                   },
+ *                   {
+ *                     "timestamp": "2024-03-12T14:30:30.000Z",
+ *                     "result": [{
+ *                       "age": 28,
+ *                       "dominant_emotion": "happy",
+ *                       "dominant_gender": "Man",
+ *                       "emotion": {
+ *                         "angry": 0.01,
+ *                         "disgust": 0.01,
+ *                         "fear": 0.01,
+ *                         "happy": 0.65,
+ *                         "neutral": 0.28,
+ *                         "sad": 0.02,
+ *                         "surprise": 0.02
+ *                       },
+ *                       "face_confidence": 0.99
+ *                     }]
+ *                   },
+ *                   {
+ *                     "timestamp": "2024-03-12T14:31:00.000Z",
+ *                     "result": [{
+ *                       "age": 28,
+ *                       "dominant_emotion": "neutral",
+ *                       "dominant_gender": "Man",
+ *                       "emotion": {
+ *                         "angry": 0.02,
+ *                         "disgust": 0.01,
+ *                         "fear": 0.02,
+ *                         "happy": 0.20,
+ *                         "neutral": 0.70,
+ *                         "sad": 0.03,
+ *                         "surprise": 0.02
+ *                       },
+ *                       "face_confidence": 0.97
+ *                     }]
+ *                   },
+ *                   {
+ *                     "timestamp": "2024-03-12T14:31:30.000Z",
+ *                     "result": [{
+ *                       "age": 28,
+ *                       "dominant_emotion": "happy",
+ *                       "dominant_gender": "Man",
+ *                       "emotion": {
+ *                         "angry": 0.01,
+ *                         "disgust": 0.01,
+ *                         "fear": 0.01,
+ *                         "happy": 0.55,
+ *                         "neutral": 0.38,
+ *                         "sad": 0.02,
+ *                         "surprise": 0.02
+ *                       },
+ *                       "face_confidence": 0.98
+ *                     }]
+ *                   },
+ *                   {
+ *                     "timestamp": "2024-03-12T14:32:00.000Z",
+ *                     "result": [{
+ *                       "age": 28,
+ *                       "dominant_emotion": "neutral",
+ *                       "dominant_gender": "Man",
+ *                       "emotion": {
+ *                         "angry": 0.02,
+ *                         "disgust": 0.01,
+ *                         "fear": 0.01,
+ *                         "happy": 0.25,
+ *                         "neutral": 0.65,
+ *                         "sad": 0.03,
+ *                         "surprise": 0.03
+ *                       },
+ *                       "face_confidence": 0.98
+ *                     }]
+ *                   },
+ *                   {
+ *                     "timestamp": "2024-03-12T14:32:30.000Z",
+ *                     "result": [{
+ *                       "age": 28,
+ *                       "dominant_emotion": "happy",
+ *                       "dominant_gender": "Man",
+ *                       "emotion": {
+ *                         "angry": 0.01,
+ *                         "disgust": 0.01,
+ *                         "fear": 0.01,
+ *                         "happy": 0.60,
+ *                         "neutral": 0.33,
+ *                         "sad": 0.02,
+ *                         "surprise": 0.02
+ *                       },
+ *                       "face_confidence": 0.99
+ *                     }]
+ *                   }
+ *                 ]
  *     responses:
  *       201:
- *         description: 인터뷰 및 분석 결과 제출 성공
+ *         description: 인터뷰 제출 성공
  *         content:
  *           application/json:
  *             schema:
  *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                   example: Interview submitted successfully
+ *               example:
+ *                 status: success
+ *                 message: Interview submitted successfully
  *                 data:
- *                   type: object
- *                   properties:
- *                     interview_count:
- *                       type: integer
- *                       description: 인터뷰 회차
- *                     interview_id:
- *                       type: string
- *                       description: 생성된 인터뷰 ID
- *                     score:
- *                       type: integer
- *                       description: 인터뷰 점수
+ *                   interview_count: 1
+ *                   interview_id: "507f1f77bcf86cd799439011"
+ *                   score: 85
  *       400:
  *         description: 잘못된 요청 (유효성 검증 실패)
  *       401:
@@ -228,30 +285,13 @@ async function updateEmotionAverage(analysisResults, count, session) {
  *       500:
  *         description: 서버 에러
  */
-router.post(
-  '/submit',
-  auth(),
-  validateRequest(validationRules.submission),
+router.post('/submit', auth(), validateRequest(validationRules.submission), 
   async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      const { 
-        questions_answers, 
-        score, 
-        analysis_results 
-      } = req.body;
-
-      // 중복된 order 체크
-      const orders = new Set(questions_answers.map(qa => qa.order));
-      if (orders.size !== 3) {
-        await session.abortTransaction();
-        return res.status(400).json(createResponse(
-          false,
-          'Duplicate order values are not allowed'
-        ));
-      }
+      const { questions_answers, score, analysis_results } = req.body;
 
       // 사용자의 count 증가
       const user = await User.findByIdAndUpdate(
@@ -259,14 +299,6 @@ router.post(
         { $inc: { count: 1 } },
         { new: true, session }
       );
-
-      if (!user) {
-        await session.abortTransaction();
-        return res.status(404).json(createResponse(
-          false,
-          'User not found'
-        ));
-      }
 
       // 감정 평균 업데이트
       await updateEmotionAverage(analysis_results, user.count, session);
@@ -311,12 +343,7 @@ router.post(
     } catch (error) {
       await session.abortTransaction();
       console.error('Interview submission error:', error);
-      res.status(500).json(createResponse(
-        false,
-        'Failed to submit interview',
-        null,
-        { error: error.message }
-      ));
+      res.status(500).json(createResponse(false, 'Failed to submit interview'));
     } finally {
       session.endSession();
     }
