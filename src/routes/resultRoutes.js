@@ -314,4 +314,204 @@ router.get('/period/:startDate/:endDate',
   }
 );
 
+/**
+ * @swagger
+ * /api/result/period:
+ *   get:
+ *     summary: 기간별 결과 조회
+ *     description: 지정된 기간 내의 모든 인터뷰 결과를 조회합니다. startDate와 endDate를 지정하지 않으면 전체 기간을 조회합니다.
+ *     tags: [Results]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+ *         description: 시작 날짜 (YYYY-MM-DD 형식)
+ *         example: "2024-03-12"
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+ *         description: 종료 날짜 (YYYY-MM-DD 형식)
+ *         example: "2024-03-13"
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: 페이지 번호
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: 페이지당 항목 수
+ *     responses:
+ *       200:
+ *         description: 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Results retrieved successfully
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       user_id:
+ *                         type: string
+ *                       interview_count:
+ *                         type: integer
+ *                       date:
+ *                         type: string
+ *                         format: date
+ *                       interview_data:
+ *                         type: object
+ *                         properties:
+ *                           questions_answers:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 question:
+ *                                   type: string
+ *                                 answer:
+ *                                   type: string
+ *                                 score:
+ *                                   type: number
+ *                                 order:
+ *                                   type: integer
+ *                           mean_score:
+ *                             type: number
+ *                       analysis_average:
+ *                         type: object
+ *                         properties:
+ *                           face_confidence:
+ *                             type: number
+ *                           emotion:
+ *                             type: object
+ *                             properties:
+ *                               angry:
+ *                                 type: number
+ *                               disgust:
+ *                                 type: number
+ *                               fear:
+ *                                 type: number
+ *                               happy:
+ *                                 type: number
+ *                               neutral:
+ *                                 type: number
+ *                               sad:
+ *                                 type: number
+ *                               surprise:
+ *                                 type: number
+ *                           total_analyses:
+ *                             type: integer
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *       400:
+ *         description: 잘못된 요청 (날짜 형식 오류 등)
+ *       401:
+ *         description: 인증되지 않은 접근
+ *       500:
+ *         description: 서버 에러
+ */
+router.get('/period',
+    auth(),
+    [
+      query('startDate').optional().custom(value => {
+        if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+          throw new Error('Start date must be in YYYY-MM-DD format');
+        }
+        return true;
+      }),
+      query('endDate').optional().custom(value => {
+        if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+          throw new Error('End date must be in YYYY-MM-DD format');
+        }
+        return true;
+      }),
+      query('page').optional().isInt({ min: 1 }),
+      query('limit').optional().isInt({ min: 1, max: 100 })
+    ],
+    async (req, res) => {
+      try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+          return res.status(400).json(createResponse(
+            false,
+            'Validation failed',
+            null,
+            { errors: errors.array() }
+          ));
+        }
+  
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+  
+        let dateQuery = { user_id: req.user.user_id };
+        
+        // startDate와 endDate가 있는 경우에만 날짜 필터 적용
+        if (req.query.startDate && req.query.endDate) {
+          dateQuery.date = {
+            $gte: req.query.startDate,
+            $lte: req.query.endDate
+          };
+        }
+  
+        const [results, total] = await Promise.all([
+          Result.find(dateQuery)
+            .sort({ interview_count: -1 })
+            .skip(skip)
+            .limit(limit)
+            .select('-__v'),
+          Result.countDocuments(dateQuery)
+        ]);
+  
+        res.set('Cache-Control', 'private, max-age=300');
+  
+        res.json(createResponse(
+          true,
+          'Results retrieved successfully',
+          results,
+          {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+          }
+        ));
+      } catch (error) {
+        console.error('Results fetch error:', error);
+        res.status(500).json(createResponse(false, 'Failed to fetch results'));
+      }
+    }
+  );
+
 module.exports = router;
