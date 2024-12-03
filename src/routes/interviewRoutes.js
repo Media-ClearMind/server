@@ -19,33 +19,33 @@ const createResponse = (success, message, data = null, meta = null) => ({
 
 // 유효성 검증 규칙
 const validationRules = {
-  submission: [
-    body('questions_answers').isArray({ min: 3, max: 3 })
-      .withMessage('Exactly 3 questions and answers are required'),
-    body('questions_answers.*.question').notEmpty()
-      .withMessage('Question is required'),
-    body('questions_answers.*.answer').notEmpty()
-      .withMessage('Answer is required'),
-    body('questions_answers.*.order').isInt({ min: 1, max: 3 })
-      .withMessage('Order must be between 1 and 3'),
-    body('questions_answers.*.score').isInt({ min: 0, max: 100 })
-      .withMessage('Score must be between 0 and 100'),
-    body('mean_score').isFloat({ min: 0, max: 100 })
-      .withMessage('Mean score must be between 0 and 100'),
-    body('analysis_results').isArray({ min: 6, max: 6 })
-      .withMessage('Exactly 6 analysis results are required'),
-    body('analysis_results.*.timestamp').isISO8601()
-      .withMessage('Valid timestamp is required'),
-    body('analysis_results.*.result').isArray({ min: 1, max: 1 })
-      .withMessage('Each analysis result must contain exactly one result object'),
-    body('analysis_results.*.result.*.face_confidence').isFloat({ min: 0, max: 1 })
-      .withMessage('Face confidence must be between 0 and 1'),
-    body('analysis_results.*.result.*.dominant_emotion').isString()
-      .withMessage('Dominant emotion must be a string'),
-    body('analysis_results.*.result.*.emotion').isObject()
-      .withMessage('Emotion data must be an object')
-  ]
-};
+    submission: [
+      body('questions_answers').isArray({ min: 3, max: 3 })
+        .withMessage('Exactly 3 questions and answers are required'),
+      body('questions_answers.*.question').notEmpty()
+        .withMessage('Question is required'),
+      body('questions_answers.*.answer').notEmpty()
+        .withMessage('Answer is required'),
+      body('questions_answers.*.order').isInt({ min: 1, max: 3 })
+        .withMessage('Order must be between 1 and 3'),
+      body('questions_answers.*.score').isInt({ min: 0, max: 100 })
+        .withMessage('Score must be between 0 and 100'),
+      body('mean_score').isFloat({ min: 0, max: 100 })
+        .withMessage('Mean score must be between 0 and 100'),
+      body('analysis_results').isArray({ min: 1 }) // 최소 1개 이상의 분석 결과 필요
+        .withMessage('At least one analysis result is required'),
+      body('analysis_results.*.timestamp').isISO8601()
+        .withMessage('Valid timestamp is required'),
+      body('analysis_results.*.result').isArray({ min: 1, max: 1 })
+        .withMessage('Each analysis result must contain exactly one result object'),
+      body('analysis_results.*.result.*.face_confidence').isFloat({ min: 0, max: 1 })
+        .withMessage('Face confidence must be between 0 and 1'),
+      body('analysis_results.*.result.*.dominant_emotion').isString()
+        .withMessage('Dominant emotion must be a string'),
+      body('analysis_results.*.result.*.emotion').isObject()
+        .withMessage('Emotion data must be an object')
+    ]
+  };
 
 // 유효성 검증 미들웨어
 const validateRequest = (rules) => {
