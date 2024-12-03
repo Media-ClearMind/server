@@ -9,6 +9,7 @@ const { specs, swaggerUi, swaggerOptions } = require('./src/config/swagger');
 const userRoutes = require('./src/routes/userRoutes');
 const analysisRoutes = require('./src/routes/analysisRoutes');
 const interviewRoutes = require('./src/routes/interviewRoutes'); // 추가
+const resultRoutes = require('./src/routes/resultRoutes');
 
 const app = express();
 
@@ -41,6 +42,7 @@ connectDB()
 app.use('/api/users', userRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/interviews', interviewRoutes); // 추가
+app.use('/api/result', resultRoutes); // 추가
 
 /**
  * @swagger

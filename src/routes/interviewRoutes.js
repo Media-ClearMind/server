@@ -7,6 +7,7 @@ const Interview = require('../models/interview');
 const Analysis = require('../models/analysis');
 const User = require('../models/user');
 const EmotionAverage = require('../models/emotionaverage');
+const Result = require('../models/result');
 
 // 표준화된 응답 생성 헬퍼 함수
 const createResponse = (success, message, data = null, meta = null) => ({
@@ -27,14 +28,12 @@ const validationRules = {
         .withMessage('Answer is required'),
       body('questions_answers.*.order').isInt({ min: 1, max: 3 })
         .withMessage('Order must be between 1 and 3'),
-      body('score').isInt({ min: 0, max: 100 })
-        .withMessage('Score must be between 0 and 100'),
-      body('analysis_results').isArray({ min: 1 })
-        .withMessage('At least one analysis result is required'),
-      body('analysis_results.*.result').isArray()
-        .withMessage('Each analysis result must contain a result array')
+      body('questions_answers.*.score').isInt({ min: 0, max: 100 })
+        .withMessage('Each answer score must be between 0 and 100'),
+      body('mean_score').isFloat({ min: 0, max: 100 })
+        .withMessage('Mean score must be between 0 and 100')
     ]
-  };
+};
 
 // 유효성 검증 미들웨어
 const validateRequest = (rules) => {
@@ -131,25 +130,28 @@ async function updateEmotionAverage(analysisResults, count, session) {
  *                   {
  *                     "question": "본인의 이름이 무엇인가요?",
  *                     "answer": "제 이름은 곽재헌일까요?",
+ *                     "score": 74,
  *                     "order": 1
  *                   },
  *                   {
  *                     "question": "본인의 배우자 이름이 무엇인가요?",
  *                     "answer": "김민태일까요?",
+ *                     "score": 82,
  *                     "order": 2
  *                   },
  *                   {
  *                     "question": "다시 한 번 말씀해주시겠어요?",
  *                     "answer": "장유태일까요?",
+ *                     "score": 68,
  *                     "order": 3
  *                   }
  *                 ]
- *               score:
- *                 type: integer
+ *               mean_score:
+ *                 type: number
  *                 minimum: 0
  *                 maximum: 100
- *                 description: 인터뷰 점수
- *                 example: 85
+ *                 description: 전체 질문에 대한 평균 점수
+ *                 example: 74.7
  *               analysis_results:
  *                 type: array
  *                 minItems: 1
@@ -277,7 +279,8 @@ async function updateEmotionAverage(analysisResults, count, session) {
  *                 data:
  *                   interview_count: 1
  *                   interview_id: "507f1f77bcf86cd799439011"
- *                   score: 85
+ *                   result_id: "507f1f77bcf86cd799439012"
+ *                   mean_score: 74.7
  *       400:
  *         description: 잘못된 요청 (유효성 검증 실패)
  *       401:
@@ -291,19 +294,16 @@ router.post('/submit', auth(), validateRequest(validationRules.submission),
     session.startTransaction();
 
     try {
-      const { questions_answers, score, analysis_results } = req.body;
+      const { questions_answers, mean_score, analysis_results } = req.body;
 
-      // 사용자의 count 증가
+      // 1. 사용자의 count 증가
       const user = await User.findByIdAndUpdate(
         req.user.user_id,
         { $inc: { count: 1 } },
         { new: true, session }
       );
 
-      // 감정 평균 업데이트
-      await updateEmotionAverage(analysis_results, user.count, session);
-
-      // 분석 결과들 저장
+      // 2. 분석 결과들 저장
       const analysisPromises = analysis_results.map(analysisResult => {
         const analysis = new Analysis({
           userId: new mongoose.Types.ObjectId(req.user.user_id),
@@ -320,15 +320,55 @@ router.post('/submit', auth(), validateRequest(validationRules.submission),
 
       await Promise.all(analysisPromises);
 
-      // 인터뷰 데이터 저장
+      // 3. 인터뷰 데이터 저장
       const interview = new Interview({
         user_id: req.user.user_id,
         interview_count: user.count,
         questions_answers: questions_answers.sort((a, b) => a.order - b.order),
-        score
+        mean_score
       });
 
       await interview.save({ session });
+
+      // 4. 감정 분석 평균 계산
+      const currentEmotions = {};
+      let totalConfidence = 0;
+
+      analysis_results.forEach(analysis => {
+        const result = analysis.result[0];
+        totalConfidence += result.face_confidence;
+        
+        Object.entries(result.emotion).forEach(([emotion, value]) => {
+          currentEmotions[emotion] = (currentEmotions[emotion] || 0) + value;
+        });
+      });
+
+      const numResults = analysis_results.length;
+      const averageConfidence = totalConfidence / numResults;
+      const averageEmotions = {};
+      
+      Object.entries(currentEmotions).forEach(([emotion, total]) => {
+        averageEmotions[emotion] = Number((total / numResults).toFixed(3));
+      });
+
+      // 5. 결과 데이터 저장
+      const result = new Result({
+        user_id: req.user.user_id,
+        interview_count: user.count,
+        date: new Date().toISOString().split('T')[0],  // YYYY-MM-DD 형식으로 저장
+        interview_data: {
+          questions_answers: questions_answers.sort((a, b) => a.order - b.order),
+          mean_score
+        },
+        analysis_average: {
+          face_confidence: Number(averageConfidence.toFixed(3)),
+          emotion: averageEmotions,
+          total_analyses: numResults
+        }
+      });
+
+      await result.save({ session });
+
       await session.commitTransaction();
 
       res.status(201).json(createResponse(
@@ -337,7 +377,8 @@ router.post('/submit', auth(), validateRequest(validationRules.submission),
         {
           interview_count: user.count,
           interview_id: interview._id,
-          score
+          result_id: result._id,
+          mean_score
         }
       ));
     } catch (error) {
