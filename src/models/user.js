@@ -33,7 +33,7 @@ const bcrypt = require('bcryptjs');
  *           description: 사용자 나이
  *         gender:
  *           type: string
- *           enum: [male, female, other]
+ *           enum: ['남성', '여성']
  *           description: 사용자 성별
  *         occupation:
  *           type: string
@@ -103,7 +103,7 @@ const userSchema = new mongoose.Schema({
   gender: {
     type: String,
     required: true,
-    enum: ['male', 'female', 'other']
+    enum: ['남성', '여성']
   },
   occupation: {
     type: String,
