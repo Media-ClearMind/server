@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const { body, param, query, validationResult } = require('express-validator');
+const { body, validationResult } = require('express-validator');
 const auth = require('../middleware/auth');
 const Interview = require('../models/interview');
 const Analysis = require('../models/analysis');
@@ -19,20 +19,32 @@ const createResponse = (success, message, data = null, meta = null) => ({
 
 // 유효성 검증 규칙
 const validationRules = {
-    submission: [
-      body('questions_answers').isArray({ min: 3, max: 3 })
-        .withMessage('Exactly 3 questions and answers are required'),
-      body('questions_answers.*.question').notEmpty()
-        .withMessage('Question is required'),
-      body('questions_answers.*.answer').notEmpty()
-        .withMessage('Answer is required'),
-      body('questions_answers.*.order').isInt({ min: 1, max: 3 })
-        .withMessage('Order must be between 1 and 3'),
-      body('questions_answers.*.score').isInt({ min: 0, max: 100 })
-        .withMessage('Each answer score must be between 0 and 100'),
-      body('mean_score').isFloat({ min: 0, max: 100 })
-        .withMessage('Mean score must be between 0 and 100')
-    ]
+  submission: [
+    body('questions_answers').isArray({ min: 3, max: 3 })
+      .withMessage('Exactly 3 questions and answers are required'),
+    body('questions_answers.*.question').notEmpty()
+      .withMessage('Question is required'),
+    body('questions_answers.*.answer').notEmpty()
+      .withMessage('Answer is required'),
+    body('questions_answers.*.order').isInt({ min: 1, max: 3 })
+      .withMessage('Order must be between 1 and 3'),
+    body('questions_answers.*.score').isInt({ min: 0, max: 100 })
+      .withMessage('Score must be between 0 and 100'),
+    body('mean_score').isFloat({ min: 0, max: 100 })
+      .withMessage('Mean score must be between 0 and 100'),
+    body('analysis_results').isArray({ min: 6, max: 6 })
+      .withMessage('Exactly 6 analysis results are required'),
+    body('analysis_results.*.timestamp').isISO8601()
+      .withMessage('Valid timestamp is required'),
+    body('analysis_results.*.result').isArray({ min: 1, max: 1 })
+      .withMessage('Each analysis result must contain exactly one result object'),
+    body('analysis_results.*.result.*.face_confidence').isFloat({ min: 0, max: 1 })
+      .withMessage('Face confidence must be between 0 and 1'),
+    body('analysis_results.*.result.*.dominant_emotion').isString()
+      .withMessage('Dominant emotion must be a string'),
+    body('analysis_results.*.result.*.emotion').isObject()
+      .withMessage('Emotion data must be an object')
+  ]
 };
 
 // 유효성 검증 미들웨어
@@ -56,11 +68,9 @@ const validateRequest = (rules) => {
 // 감정 평균 계산 및 업데이트 함수
 async function updateEmotionAverage(analysisResults, count, session) {
   try {
-    // 현재 분석 결과들에서 감정 데이터 추출
     const currentEmotions = {};
     let totalConfidence = 0;
 
-    // 모든 분석 결과의 감정 값 합산
     analysisResults.forEach(analysis => {
       const result = analysis.result[0];
       totalConfidence += result.face_confidence;
@@ -70,24 +80,22 @@ async function updateEmotionAverage(analysisResults, count, session) {
       });
     });
 
-    // 평균 계산
     const numResults = analysisResults.length;
     const averageConfidence = totalConfidence / numResults;
     const averageEmotions = {};
+    
     Object.entries(currentEmotions).forEach(([emotion, total]) => {
       averageEmotions[emotion] = Number((total / numResults).toFixed(3));
     });
 
-    // 새로운 평균 데이터 생성
     const newAverage = {
       count,
       date: new Date().toISOString().split('T')[0],
-      face_confidence: Number(averageConfidence.toFixed(2)),
+      face_confidence: Number(averageConfidence.toFixed(3)),
       emotion: averageEmotions,
       total_analyses: numResults
     };
 
-    // upsert로 업데이트 또는 생성
     await EmotionAverage.updateOne(
       { count },
       { $set: newAverage },
@@ -296,6 +304,21 @@ router.post('/submit', auth(), validateRequest(validationRules.submission),
     try {
       const { questions_answers, mean_score, analysis_results } = req.body;
 
+      // 데이터 정렬 및 검증
+      const sortedQA = questions_answers.sort((a, b) => a.order - b.order);
+      
+      // 순서가 1,2,3인지 확인
+      const validOrder = sortedQA.every((qa, idx) => qa.order === idx + 1);
+      if (!validOrder) {
+        throw new Error('Invalid question order sequence');
+      }
+
+      // mean_score 검증
+      const calculatedMeanScore = Number((sortedQA.reduce((sum, qa) => sum + qa.score, 0) / 3).toFixed(1));
+      if (Math.abs(calculatedMeanScore - mean_score) > 0.1) {  // 부동소수점 오차 허용
+        throw new Error('Provided mean score does not match calculated mean');
+      }
+
       // 1. 사용자의 count 증가
       const user = await User.findByIdAndUpdate(
         req.user.user_id,
@@ -308,62 +331,54 @@ router.post('/submit', auth(), validateRequest(validationRules.submission),
         const analysis = new Analysis({
           userId: new mongoose.Types.ObjectId(req.user.user_id),
           count: user.count,
-          serverTimestamp: analysisResult.timestamp,
-          analysis_result: analysisResult.result,
-          result: {
-            status: 'completed',
-            final_score: null
-          }
+          serverTimestamp: new Date(analysisResult.timestamp),
+          result: analysisResult.result,
+          status: 'completed'
         });
         return analysis.save({ session });
       });
 
-      await Promise.all(analysisPromises);
+      const savedAnalyses = await Promise.all(analysisPromises);
 
       // 3. 인터뷰 데이터 저장
       const interview = new Interview({
         user_id: req.user.user_id,
         interview_count: user.count,
-        questions_answers: questions_answers.sort((a, b) => a.order - b.order),
+        questions_answers: sortedQA,
         mean_score
       });
 
       await interview.save({ session });
 
-      // 4. 감정 분석 평균 계산
-      const currentEmotions = {};
-      let totalConfidence = 0;
-
-      analysis_results.forEach(analysis => {
-        const result = analysis.result[0];
-        totalConfidence += result.face_confidence;
-        
-        Object.entries(result.emotion).forEach(([emotion, value]) => {
-          currentEmotions[emotion] = (currentEmotions[emotion] || 0) + value;
-        });
-      });
-
-      const numResults = analysis_results.length;
-      const averageConfidence = totalConfidence / numResults;
-      const averageEmotions = {};
-      
-      Object.entries(currentEmotions).forEach(([emotion, total]) => {
-        averageEmotions[emotion] = Number((total / numResults).toFixed(3));
-      });
+      // 4. 감정 분석 평균 업데이트
+      await updateEmotionAverage(analysis_results, user.count, session);
 
       // 5. 결과 데이터 저장
       const result = new Result({
         user_id: req.user.user_id,
         interview_count: user.count,
-        date: new Date().toISOString().split('T')[0],  // YYYY-MM-DD 형식으로 저장
+        date: new Date().toISOString().split('T')[0],
         interview_data: {
-          questions_answers: questions_answers.sort((a, b) => a.order - b.order),
+          questions_answers: sortedQA,
           mean_score
         },
         analysis_average: {
-          face_confidence: Number(averageConfidence.toFixed(3)),
-          emotion: averageEmotions,
-          total_analyses: numResults
+          face_confidence: Number((analysis_results.reduce((sum, ar) => 
+            sum + ar.result[0].face_confidence, 0) / analysis_results.length).toFixed(3)),
+          emotion: Object.fromEntries(
+            Object.entries(
+              analysis_results.reduce((acc, ar) => {
+                Object.entries(ar.result[0].emotion).forEach(([emotion, value]) => {
+                  acc[emotion] = (acc[emotion] || 0) + value;
+                });
+                return acc;
+              }, {})
+            ).map(([emotion, sum]) => [
+              emotion, 
+              Number((sum / analysis_results.length).toFixed(3))
+            ])
+          ),
+          total_analyses: analysis_results.length
         }
       });
 
@@ -378,13 +393,17 @@ router.post('/submit', auth(), validateRequest(validationRules.submission),
           interview_count: user.count,
           interview_id: interview._id,
           result_id: result._id,
-          mean_score
+          mean_score,
+          analysis_ids: savedAnalyses.map(analysis => analysis._id)
         }
       ));
     } catch (error) {
       await session.abortTransaction();
       console.error('Interview submission error:', error);
-      res.status(500).json(createResponse(false, 'Failed to submit interview'));
+      res.status(500).json(createResponse(
+        false, 
+        error.message || 'Failed to submit interview'
+      ));
     } finally {
       session.endSession();
     }
