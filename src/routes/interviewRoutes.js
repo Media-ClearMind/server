@@ -313,12 +313,6 @@ router.post('/submit', auth(), validateRequest(validationRules.submission),
         throw new Error('Invalid question order sequence');
       }
 
-      // mean_score 검증
-      const calculatedMeanScore = Number((sortedQA.reduce((sum, qa) => sum + qa.score, 0) / 3).toFixed(1));
-      if (Math.abs(calculatedMeanScore - mean_score) > 0.1) {  // 부동소수점 오차 허용
-        throw new Error('Provided mean score does not match calculated mean');
-      }
-
       // 1. 사용자의 count 증가
       const user = await User.findByIdAndUpdate(
         req.user.user_id,
